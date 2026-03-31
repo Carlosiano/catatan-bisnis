@@ -1,0 +1,18 @@
+:root {
+    /* --black: #292929; */
+    --black: #333333;
+    --secondary-black: #525252;
+    --light-black: #777777;
+    --primary-gray: #cfcfcf;
+    --gray : #eaeceb;
+    --semi-white: #f8faf9;
+    --blue: #0c5a98;
+    --secondary-blue: #0f78cb;
+    --light-blue: #1f8fe5;
+    --dark-sky-blue:#1289E7;
+    --button-blue: #2381c9;
+    --green: #09b970;
+    --struk-info-outline-margin: 1.8px;
+    --struk-info-width: 350px;
+    --struk-background-right: 13px;
+}

@@ -1,0 +1,5 @@
+
+- tambahkan jenis barang yang di beli
+- hapus saja kolom penjual karena sudah di grouping menggunakan nama penjual
+- dibagian penjual di group berdasarkan jenis barang
+- tambahkan fitur hapus

@@ -1,0 +1,38 @@
+{
+  "name": "catatan-bisnis",
+  "version": "0.1.0",
+  "description": "",
+  "type": "module",
+  "scripts": {
+    "dev": "vite dev --host",
+    "build": "vite build",
+    "preview": "vite preview",
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
+    "apksigner": "rm -f app-signed-final.apk && rm -rf app-signed-final.apk.idsig && apksigner sign --ks brimo --ks-key-alias carlosiano --ks-pass pass:nongkalo --key-pass pass:nongkalo --out app-signed-final.apk ./src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release-unsigned.apk",
+    "tauri": "tauri"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@misterdevs/qris-parser": "^1.0.4",
+    "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-opener": "^2",
+    "@tauri-apps/plugin-sql": "~2",
+    "lucide-svelte": "^1.0.1",
+    "sql": "^0.78.0",
+    "tauri-plugin-app-events-api": "0.2"
+  },
+  "devDependencies": {
+    "@sveltejs/adapter-auto": "^6.0.0",
+    "@sveltejs/adapter-static": "^3.0.6",
+    "@sveltejs/kit": "^2.22.0",
+    "@sveltejs/vite-plugin-svelte": "^6.0.0",
+    "@tauri-apps/cli": "^2",
+    "@tauri-apps/plugin-fs": "^2.4.4",
+    "sass-embedded": "^1.93.2",
+    "svelte": "^5.0.0",
+    "svelte-check": "^4.0.0",
+    "typescript": "~5.6.2",
+    "vite": "^7.0.4"
+  }
+}

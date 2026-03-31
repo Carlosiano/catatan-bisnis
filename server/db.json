@@ -1,0 +1,215 @@
+{
+  "sellers": [
+    {
+      "id": "cf836ab0-4daf-414f-b0ee-2765874a39ef",
+      "name": "misi"
+    },
+    {
+      "id": "14886a8e-45ff-4987-b9e3-6f8552bd863b",
+      "name": "bagas"
+    },
+    {
+      "id": "7ef56c46-b77d-4393-b440-fb1fc1d33fd7",
+      "name": "kevin"
+    },
+    {
+      "id": "4c460989-1794-4dd5-8194-5c325462069c",
+      "name": "robert"
+    },
+    {
+      "id": "e812ee7f-d167-43dc-8bcc-626cd08ca9cf",
+      "name": "ike"
+    }
+  ],
+  "purchases": [
+    {
+      "id": "7ed1f7bd-668b-4b55-8b97-69f0ec6afe4a",
+      "sellerId": "cf836ab0-4daf-414f-b0ee-2765874a39ef",
+      "item": "kelapa",
+      "unit": "subur",
+      "jumlahJanji": 200,
+      "jumlahSisa": 200,
+      "harga": 100000,
+      "total": 5000000,
+      "uangDibayar": 10000000,
+      "tanggal": "2026-03-29T12:40:45.554Z",
+      "status": "lunas",
+      "jumlah": 50,
+      "uangKeluar": 0,
+      "catatan": "Pelunasan dari DP tanggal 29/3/2026"
+    },
+    {
+      "id": "71cc1f13-9551-42c9-a17a-4375fc1e6133",
+      "sellerId": "cf836ab0-4daf-414f-b0ee-2765874a39ef",
+      "item": "kelapa",
+      "unit": "subur",
+      "jumlahJanji": 200,
+      "jumlahSisa": 150,
+      "harga": 100000,
+      "total": 20000000,
+      "uangDibayar": 5000000,
+      "tanggal": "2026-03-29T12:42:53.278Z",
+      "status": "lunas",
+      "jumlah": 200,
+      "uangKeluar": 15000000,
+      "catatan": "Pelunasan dari DP tanggal 29/3/2026"
+    },
+    {
+      "id": "d8bd646d-b117-4648-b0c0-22b7c50aa415",
+      "sellerId": "7ef56c46-b77d-4393-b440-fb1fc1d33fd7",
+      "item": "kelapa",
+      "unit": "subur",
+      "jumlahJanji": 200,
+      "jumlahSisa": 200,
+      "harga": 100000,
+      "total": 5000000,
+      "uangDibayar": 10000000,
+      "tanggal": "2026-03-29T12:53:29.352Z",
+      "status": "lunas",
+      "jumlah": 50,
+      "uangKeluar": 0,
+      "catatan": "Pelunasan dari DP tanggal 29/3/2026"
+    },
+    {
+      "id": "0e73d90f-3513-4191-a237-46dce9c342a3",
+      "sellerId": "cf836ab0-4daf-414f-b0ee-2765874a39ef",
+      "item": "kelapa",
+      "unit": "subur",
+      "jumlahJanji": 50,
+      "jumlahSisa": 50,
+      "harga": 100000,
+      "total": 5000000,
+      "uangDibayar": 5000000,
+      "tanggal": "2026-03-29T12:56:36.852Z",
+      "status": "lunas"
+    },
+    {
+      "id": "8f5a2e33-c8eb-4ac9-b8c9-75921b869653",
+      "sellerId": "7ef56c46-b77d-4393-b440-fb1fc1d33fd7",
+      "item": "kelapa",
+      "unit": "subur",
+      "jumlahJanji": 20,
+      "jumlahSisa": 20,
+      "harga": 100000,
+      "total": 2000000,
+      "uangDibayar": 2000000,
+      "tanggal": "2026-03-29T13:01:55.283Z",
+      "status": "lunas"
+    },
+    {
+      "id": "d9dcbe81-1fc3-465d-8b3c-019d55896a9b",
+      "sellerId": "4c460989-1794-4dd5-8194-5c325462069c",
+      "item": "kemiri",
+      "unit": "kg",
+      "jumlahJanji": 40,
+      "jumlahSisa": 40,
+      "harga": 13000,
+      "total": 520000,
+      "uangDibayar": 520000,
+      "tanggal": "2026-03-29T13:02:39.579Z",
+      "status": "lunas"
+    },
+    {
+      "id": "c3e6da74-1d4e-40b8-9e28-38aa2686c627",
+      "sellerId": "7ef56c46-b77d-4393-b440-fb1fc1d33fd7",
+      "item": "mente",
+      "unit": "kg",
+      "jumlahJanji": 100,
+      "jumlahSisa": 0,
+      "jumlah": 100,
+      "harga": 15000,
+      "total": 1500000,
+      "uangDibayar": 1500000,
+      "tanggal": "2026-03-29T13:11:15.408Z",
+      "status": "lunas"
+    },
+    {
+      "id": "f5716083-221d-466d-bf11-8f6fd5961132",
+      "sellerId": "7ef56c46-b77d-4393-b440-fb1fc1d33fd7",
+      "item": "kelapa",
+      "unit": "subur",
+      "jumlahJanji": 100,
+      "jumlahSisa": 0,
+      "jumlah": 100,
+      "harga": 100000,
+      "total": 10000000,
+      "uangDibayar": 10000000,
+      "tanggal": "2026-03-30T02:07:13.118Z",
+      "status": "lunas"
+    },
+    {
+      "id": "b2d8026e-423d-432a-8ce4-608ad758e8d9",
+      "sellerId": "14886a8e-45ff-4987-b9e3-6f8552bd863b",
+      "item": "kelapa",
+      "unit": "subur",
+      "jumlahJanji": 100,
+      "jumlahSisa": 100,
+      "jumlah": 100,
+      "harga": 100000,
+      "total": 10000000,
+      "uangDibayar": 4000000,
+      "tanggal": "2026-03-30T02:12:02.594Z",
+      "status": "lunas",
+      "catatan": "Pelunasan dari DP tanggal 29/3/2026",
+      "uangKeluar": 6000000
+    },
+    {
+      "id": "3dad05ef-16c9-4026-9c88-b8e03d8c3570",
+      "sellerId": "7ef56c46-b77d-4393-b440-fb1fc1d33fd7",
+      "item": "kelapa",
+      "unit": "subur",
+      "jumlahJanji": 100,
+      "jumlahSisa": 0,
+      "jumlah": 100,
+      "harga": 100000,
+      "total": 10000000,
+      "uangDibayar": 10000000,
+      "tanggal": "2026-03-30T04:23:47.313Z",
+      "status": "lunas"
+    }
+  ],
+  "debts": [],
+  "productions": [],
+  "incomes": [],
+  "items": [
+    {
+      "id": "8e112a7e-05dc-4fc8-804f-07a3c648ae94",
+      "name": "kemiri",
+      "defaultUnitId": "dd371158-55e5-4dd1-94ee-1ea1fea4bed9"
+    },
+    {
+      "id": "3d303a6c-0b72-4c1a-a300-561c1fc16197",
+      "name": "kopra",
+      "defaultUnitId": "dd371158-55e5-4dd1-94ee-1ea1fea4bed9"
+    },
+    {
+      "id": "91b588d8-7ab2-4885-a5ce-f4c224a79259",
+      "name": "kelapa",
+      "defaultUnitId": "f5116dfb-15f3-48a2-bdc4-c2cbad978132"
+    },
+    {
+      "id": "0ab3e66e-df9f-468d-8eef-f9d85e8a0776",
+      "name": "mente",
+      "defaultUnitId": "dd371158-55e5-4dd1-94ee-1ea1fea4bed9"
+    },
+    {
+      "id": "dc7943a2-933f-433b-9d39-5b2aa90aee40",
+      "name": "kakao",
+      "defaultUnitId": "dd371158-55e5-4dd1-94ee-1ea1fea4bed9"
+    }
+  ],
+  "units": [
+    {
+      "id": "f5116dfb-15f3-48a2-bdc4-c2cbad978132",
+      "name": "subur"
+    },
+    {
+      "id": "dd371158-55e5-4dd1-94ee-1ea1fea4bed9",
+      "name": "kg"
+    },
+    {
+      "id": "ca2b84d2-2a5b-413e-b24d-912023c5d8d4",
+      "name": "ikat"
+    }
+  ]
+}

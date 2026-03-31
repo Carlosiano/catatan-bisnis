@@ -1,0 +1,47 @@
+# --- Frontend (SvelteKit / Node.js) ---
+node_modules/
+.svelte-kit/
+build/
+.vercel/
+.netlify/
+dist/
+.env
+.env.*
+!.env.example
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+plugin-barcode-scanner/node_modules/
+barcode-scanner/node_modules/
+
+# --- Backend (Tauri / Rust) ---
+src-tauri/target/
+src-tauri/bin/
+
+# --- Platform Generated Assets (Ignore hanya subfolder build-nya) ---
+# Jangan meng-ignore seluruh 'src-tauri/gen/' jika ada modifikasi native
+src-tauri/gen/android/.gradle/
+src-tauri/gen/android/build/
+src-tauri/gen/android/app/build/
+src-tauri/gen/apple/build/
+src-tauri/plugins/barcode-scanner/node_modules/
+src-tauri/plugins/barcode-scanner.stable/node_modules/
+
+# Pengecualian spesifik: pastikan file modifikasi Anda TIDAK ter-ignore
+!src-tauri/gen/android/app/src/main/java/com/kalo/brimo/MainActivity.kt
+
+
+# --- OS & Editor ---
+.DS_Store
+Thumbs.db
+.vscode/
+!.vscode/extensions.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
