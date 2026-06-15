@@ -595,7 +595,7 @@
 
                     {#if h.tipeMutasi === "tambah"}
                       <span class="log-item-name" style="color: #047857;"
-                        >➕ PENCUIRAN PANJAR BARU</span
+                        >➕ PENCAIRAN PANJAR BARU</span
                       >
                       <span
                         class="log-desc"

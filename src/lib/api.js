@@ -419,5 +419,56 @@ export const dbActions = {
     const newId = crypto.randomUUID();
     await db.execute("INSERT INTO sellers (id, name) VALUES ($1, $2)", [newId, name]);
     return newId;
+  },
+
+  async addOurDebt(data) {
+    // PERBAIKAN: Ubah getDB() menjadi initDB() agar database dijamin siap sebelum INSERT
+    const db = await initDB();
+
+    const itemFix = data.item ? data.item.trim().toLowerCase() : "";
+    const unitFix = data.unit ? data.unit.trim().toLowerCase() : "kg";
+
+    // Kita gunakan tabel purchases dengan status 'hutang-kita'
+    return await db.execute(
+      `INSERT INTO purchases (id, "sellerId", item, jumlah, total, catatan, status, unit) 
+       VALUES ($1, $2, $3, $4, $5, $6, 'hutang-kita', $7)`,
+      [crypto.randomUUID(), data.sellerId, itemFix, data.jumlah, data.total, data.catatan, unitFix]
+    );
+  },
+
+  async getOurDebts() {
+    try {
+      const db = await initDB();
+      const result = await db.select(`
+        SELECT 
+          p.id, 
+          p.item, 
+          p.jumlah, 
+          p.total, 
+          p.tanggal, 
+          p."sellerId", 
+          p.unit, 
+          p.catatan, 
+          p.status, 
+          s.name as "sellerName"
+        FROM purchases p
+        LEFT JOIN sellers s ON p."sellerId" = s.id
+        WHERE p.status = 'hutang-kita'
+        ORDER BY p.tanggal DESC
+      `);
+      return result || [];
+    } catch (err) {
+      console.error("Gagal total query getOurDebts:", err);
+      return []; // Mengembalikan array kosong agar Svelte .reduce() tidak crash
+    }
+  },
+
+  async payOurDebt(id, catatanBaru) {
+    const db = await getDB();
+    // Ubah status menjadi 'lunas' setelah Anda membayar utang tersebut ke petani
+    return await db.execute(
+      `UPDATE purchases SET status = 'lunas', catatan = $1 WHERE id = $2`,
+      [catatanBaru, id]
+    );
   }
 };
