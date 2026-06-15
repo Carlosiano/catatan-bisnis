@@ -75,10 +75,12 @@ export const dbActions = {
 
   async addPurchase(data) {
     const db = await getDB();
+    const itemFix = data.item ? data.item.trim().toLowerCase() : "";
+    const unitFix = data.unit ? data.unit.trim().toLowerCase() : "";
     return await db.execute(
       `INSERT INTO purchases (id, "sellerId", item, jumlah, total, catatan, status, unit) 
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-      [crypto.randomUUID(), data.sellerId, data.item, data.jumlah, data.total, data.catatan, 'lunas', data.unit]
+      [crypto.randomUUID(), data.sellerId, itemFix, data.jumlah, data.total, data.catatan, 'lunas', unitFix]
     );
   },
 
@@ -88,18 +90,20 @@ export const dbActions = {
       INSERT INTO debts (id, "sellerId", item, unit, "jumlahJanji", "jumlahSisa", "uangDibayar", "saldoDPSisa", tanggal, status) 
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
     `;
+    const itemFix = debt.item ? debt.item.trim().toLowerCase() : "panjar tunai";
+    const unitFix = debt.unit ? debt.unit.trim().toLowerCase() : "-";
 
     try {
       await db.execute(query, [
         crypto.randomUUID(),
         debt.sellerId,
-        debt.item,
-        debt.unit,
+        itemFix,
+        unitFix,
         Number(debt.jumlahJanji) || 0,
         Number(debt.jumlahJanji) || 0,
         Number(debt.uangDibayar),
         Number(debt.uangDibayar),
-        debt.tanggal, // String format YYYY-MM-DD langsung masuk dengan aman ke DATETIME SQLite
+        debt.tanggal,
         'hutang'
       ]);
       return true;
@@ -286,7 +290,7 @@ export const dbActions = {
     const totalNilaiBarang = jumlahMasuk * hargaSaatIni;
     const sellerIdFix = debt.sellerId || null;
 
-    // Amankan agar barang & satuan otomatis terdaftar di Master Data
+    // PERBAIKAN 1: Bersihkan teks dan paksa huruf kecil murni (Lower Case) untuk standarisasi data
     const namaBarangClean = debt.item ? debt.item.trim().toLowerCase() : "";
     const namaSatuanClean = debt.unit ? debt.unit.trim().toLowerCase() : "";
 
@@ -311,7 +315,7 @@ export const dbActions = {
     }
 
     let porsiPotongDP = nominalPotongManual !== undefined && nominalPotongManual !== null
-      ? Math.min(Number(debt.saldoDPSisa), Number(nominalPotongManual)) // <-- TAMBAHKAN Math.min DI SINI
+      ? Math.min(Number(debt.saldoDPSisa), Number(nominalPotongManual))
       : Math.min(Number(debt.saldoDPSisa), totalNilaiBarang);
 
     let uangTambahanBayar = Math.max(0, totalNilaiBarang - porsiPotongDP);
@@ -321,37 +325,35 @@ export const dbActions = {
       teksCatatan += ` | Bayar Tunai ke Petani: Rp ${uangTambahanBayar.toLocaleString('id-ID')}`;
     }
 
-    // Masukkan data transaksi ke tabel purchases
+    // PERBAIKAN 2: Gunakan namaBarangClean & namaSatuanClean agar data purchases seragam menggunakan huruf kecil murni
     await db.execute(`
-  INSERT INTO purchases (id, "sellerId", item, jumlah, total, tanggal, unit, catatan, status)
-  VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, $6, $7, $8)
-`, [
+      INSERT INTO purchases (id, "sellerId", item, jumlah, total, tanggal, unit, catatan, status)
+      VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, $6, $7, $8)
+    `, [
       crypto.randomUUID(),
       sellerIdFix,
-      debt.item,
+      namaBarangClean, // <-- Menggunakan hasil standarisasi huruf kecil murni
       jumlahMasuk,
       totalNilaiBarang,
-      debt.unit,
+      namaSatuanClean, // <-- Menggunakan hasil standarisasi huruf kecil murni
       teksCatatan,
       'lunas'
     ]);
 
-    // --- DI SINI PERBAIKANNYA: Petakan parameter $6 ke kolom itemName ---
     await db.execute(
       `INSERT INTO debt_transactions (id, "debtId", "jumlahAmbil", "hargaSaatIni", "totalPotong", tanggal, itemName, transactionUnit)
-   VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, $6, $7)`,
+       VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, $6, $7)`,
       [
         crypto.randomUUID(),
         debt.id,
         jumlahMasuk,
         hargaSaatIni,
         porsiPotongDP,
-        debt.item,
-        debt.unit // <-- Sekarang teks "ton" / "subur" akan tersimpan dengan aman ke parameter $7
+        namaBarangClean, // <-- Gunakan nama yang sudah bersih
+        namaSatuanClean  // <-- Gunakan satuan yang sudah bersih
       ]
     );
 
-    // Update saldo induk di tabel debts
     const sisaUangDPBaru = Math.max(0, debt.saldoDPSisa - porsiPotongDP);
     const sisaBarangBaru = debt.jumlahJanji > 0 ? Math.max(0, debt.jumlahSisa - jumlahMasuk) : 0;
     const statusBaru = sisaUangDPBaru <= 0 ? 'lunas-dp' : 'hutang';

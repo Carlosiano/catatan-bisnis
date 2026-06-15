@@ -3,27 +3,27 @@
   import { onMount } from "svelte";
   import { page } from "$app/stores";
   import { goto } from "$app/navigation";
-  import { 
-    ArrowLeft, 
-    Scale, 
-    Banknote, 
-    CheckCircle2, 
-    Package, 
-    Calendar, 
-    Coins, 
+  import {
+    ArrowLeft,
+    Scale,
+    Banknote,
+    CheckCircle2,
+    Package,
+    Calendar,
+    Coins,
     ChevronRight,
-    Calculator 
+    Calculator,
   } from "lucide-svelte";
 
   // --- States ---
   let activeDebts = $state([]);
   let selectedDebt = $state(null);
   let history = $state([]);
-  let masterItems = $state([]); 
+  let masterItems = $state([]);
 
   let qtyDiterima = $state<number | undefined>();
   let hargaPasarHariIni = $state<number | undefined>();
-  let nominalPotongPanjar = $state<number | undefined>(); 
+  let nominalPotongPanjar = $state<number | undefined>();
 
   let editItem = $state("");
   let editUnit = $state("");
@@ -47,8 +47,8 @@
 
   async function loadData() {
     activeDebts = await dbActions.getOnlyDebts();
-    masterItems = await dbActions.getItems(); 
-    
+    masterItems = await dbActions.getItems();
+
     if (targetId && activeDebts.length > 0) {
       const found = activeDebts.find((d) => d.id === targetId);
       if (found) selectDebt(found);
@@ -58,8 +58,8 @@
   async function selectDebt(debt) {
     selectedDebt = debt;
     hargaPasarHariIni = debt.harga || undefined;
-    editItem = debt.item === "Panjar Tunai" ? "" : debt.item;
-    editUnit = debt.unit === "-" ? "subur" : debt.unit;
+    editItem = "";
+    editUnit = "";
 
     nominalPotongPanjar =
       Math.min(
@@ -73,7 +73,7 @@
   $effect(() => {
     if (selectedDebt && editItem.trim() !== "") {
       const foundItem = masterItems.find(
-        (i) => i.name.toLowerCase() === editItem.trim().toLowerCase()
+        (i) => i.name.toLowerCase() === editItem.trim().toLowerCase(),
       );
 
       if (foundItem && foundItem.defaultUnitName) {
@@ -119,12 +119,16 @@
   }
 
   const rupiah = (n) => new Intl.NumberFormat("id-ID").format(n || 0);
-  
+
   function formatTanggalMurni(txtDate) {
     if (!txtDate) return "-";
     const d = new Date(txtDate);
     if (isNaN(d.getTime())) return txtDate;
-    return d.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
+    return d.toLocaleDateString("id-ID", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
   }
 
   onMount(loadData);
@@ -134,28 +138,37 @@
   {#if !selectedDebt}
     <header class="main-header">
       <h2>Terima Barang</h2>
-      <p class="subtitle">Potong/debet saldo DP untuk penyerahan hasil bumi masuk</p>
+      <p class="subtitle">
+        Potong/debet saldo DP untuk penyerahan hasil bumi masuk
+      </p>
     </header>
 
     <div class="debt-list">
-      {#each activeDebts.filter(d => d.status === 'hutang') as d}
+      {#each activeDebts.filter((d) => d.status === "hutang") as d}
         <button class="debt-card-premium" onclick={() => selectDebt(d)}>
           <div class="card-main-info">
             <span class="seller-title">{d.sellerName || "Anonim"}</span>
             <div class="card-meta-row">
-              <span class="meta-label-item"><Package size={11} /> {d.item}</span>
+              <span class="meta-label-item"><Package size={11} /> {d.item}</span
+              >
               <span class="bullet">•</span>
-              <span class="meta-label-date"><Calendar size={11} /> {formatTanggalMurni(d.tanggal)}</span>
+              <span class="meta-label-date"
+                ><Calendar size={11} /> {formatTanggalMurni(d.tanggal)}</span
+              >
             </div>
           </div>
           <div class="card-stats-grid">
             <div class="stat-box">
               <span class="stat-lbl">Sisa Janji</span>
-              <span class="stat-val">{d.jumlahSisa} {d.unit !== '-' ? d.unit : ''}</span>
+              <span class="stat-val"
+                >{d.jumlahSisa} {d.unit !== "-" ? d.unit : ""}</span
+              >
             </div>
             <div class="stat-box">
               <span class="stat-lbl">Saldo Panjar</span>
-              <span class="stat-val price-green">Rp {rupiah(d.saldoDPSisa)}</span>
+              <span class="stat-val price-green"
+                >Rp {rupiah(d.saldoDPSisa)}</span
+              >
             </div>
           </div>
           <ChevronRight size={16} class="arrow-right-icon" />
@@ -170,7 +183,14 @@
   {:else}
     <div class="form-layout-page">
       <header class="form-header-clean">
-        <button class="btn-back-premium" onclick={() => { selectedDebt = null; goto("/terima"); }} aria-label="Kembali">
+        <button
+          class="btn-back-premium"
+          onclick={() => {
+            selectedDebt = null;
+            goto("/terima");
+          }}
+          aria-label="Kembali"
+        >
           <ArrowLeft size={18} />
         </button>
         <div>
@@ -182,8 +202,17 @@
       <div class="farmer-info-card">
         <h4>{selectedDebt.sellerName}</h4>
         <div class="info-details-flex">
-          <span class="detail-pill"><Scale size={13} /> Kontrak: <b>{selectedDebt.item} ({selectedDebt.jumlahSisa} {selectedDebt.unit})</b></span>
-          <span class="detail-pill accent"><Banknote size={13} /> Saldo DP Tersedia: <b>Rp {rupiah(selectedDebt.saldoDPSisa)}</b></span>
+          <span class="detail-pill"
+            ><Scale size={13} /> Kontrak:
+            <b
+              >{selectedDebt.item} ({selectedDebt.jumlahSisa}
+              {selectedDebt.unit})</b
+            ></span
+          >
+          <span class="detail-pill accent"
+            ><Banknote size={13} /> Saldo DP Tersedia:
+            <b>Rp {rupiah(selectedDebt.saldoDPSisa)}</b></span
+          >
         </div>
       </div>
 
@@ -216,13 +245,15 @@
                 id="unit-input"
                 type="text"
                 bind:value={editUnit}
-                placeholder="Subur"
+                placeholder="satuan"
               />
             </div>
           </div>
 
           <div class="input-field-group">
-            <label for="price-input">Harga Pasar Per {editUnit || 'Satuan'} Hari Ini</label>
+            <label for="price-input"
+              >Harga Pasar Per {editUnit || "Satuan"} Hari Ini</label
+            >
             <div class="currency-wrapper">
               <span class="prefix">Rp</span>
               <input
@@ -235,7 +266,9 @@
           </div>
 
           <div class="input-field-group manual-potong-wrapper">
-            <label for="potong-input">Nominal Potong Saldo Panjar Hari Ini</label>
+            <label for="potong-input"
+              >Nominal Potong Saldo Panjar Hari Ini</label
+            >
             <div class="currency-wrapper">
               <span class="prefix text-amber">Rp</span>
               <input
@@ -245,14 +278,17 @@
                 placeholder="Masukkan nominal cicilan..."
               />
             </div>
-            <small class="hint-text-spec">*Kurangi angka ini jika petani ingin mencicil sebagian potong utang</small>
+            <small class="hint-text-spec"
+              >*Kurangi angka ini jika petani ingin mencicil sebagian potong
+              utang</small
+            >
           </div>
 
           <div class="calculation-premium-box">
             <div class="calc-header-title">
               <Calculator size={14} /> Ringkasan Pembayaran Kas
             </div>
-            
+
             <div class="calc-item-row">
               <span>Total Bruto Nilai Barang:</span>
               <span class="val-white">Rp {rupiah(totalNilaiBarang)}</span>
@@ -280,7 +316,11 @@
         </div>
       {:else}
         <div class="status-disabled-banner">
-          <p>⚠️ Kontrak transaksi panjar ini telah ditutup dengan status <b>{selectedDebt.status}</b>.</p>
+          <p>
+            ⚠️ Kontrak transaksi panjar ini telah ditutup dengan status <b
+              >{selectedDebt.status}</b
+            >.
+          </p>
           <p>Sistem mengunci penambahan manifest baru untuk data ini.</p>
         </div>
       {/if}
@@ -294,7 +334,10 @@
     max-width: 480px;
     margin: 0 auto;
     padding: 16px 16px 100px 16px;
-    font-family: system-ui, -apple-system, sans-serif;
+    font-family:
+      system-ui,
+      -apple-system,
+      sans-serif;
   }
 
   .main-header {
@@ -357,7 +400,8 @@
     margin-top: 2px;
   }
 
-  .meta-label-item, .meta-label-date {
+  .meta-label-item,
+  .meta-label-date {
     font-size: 11.5px;
     color: #64748b;
     display: inline-flex;
@@ -450,7 +494,7 @@
     padding: 14px;
     border-radius: 14px;
     margin-bottom: 20px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.01);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.01);
   }
 
   .farmer-info-card h4 {
@@ -567,7 +611,7 @@
     border-radius: 12px;
     border: 1px solid #fde68a;
   }
-  
+
   .manual-potong-wrapper label {
     color: #b45309;
   }
@@ -580,8 +624,10 @@
   .manual-potong-wrapper .currency-wrapper input:focus {
     border-color: #d97706;
   }
-  
-  .text-amber { color: #d97706; }
+
+  .text-amber {
+    color: #d97706;
+  }
 
   .hint-text-spec {
     font-size: 11px;
@@ -629,8 +675,13 @@
     padding-bottom: 6px;
   }
 
-  .val-white { color: #ffffff; }
-  .val-amber { color: #fbbf24; font-weight: 700; }
+  .val-white {
+    color: #ffffff;
+  }
+  .val-amber {
+    color: #fbbf24;
+    font-weight: 700;
+  }
 
   .cash-alert-banner {
     background: rgba(16, 185, 129, 0.1);
