@@ -31,13 +31,15 @@
 </script>
 
 <div class="app">
-  <Header />
+  <!-- <Header /> -->
+   <div class="notif"></div>
 
   <div class="main">
     <slot />
   </div>
 
   <Navigation />
+  <div class="android-nav"></div>
 </div>
 
 <!-- {@render children?.()} -->
@@ -100,9 +102,20 @@
     /* padding: 16px; */
     background: #f5f5f5;
     /* background: red; */
-    height: 100%;
-    overflow-y: scroll;
-    overflow-x: hidden;
+    /* height: 100%; */
+    overflow: auto;
+    position: relative;
+    /* overflow: hidden; */
+  }
+
+  .notif {
+    height: 33px;
+    /* background-color: black; */
+  }
+
+  .android-nav {
+    height: 38px;
+    background-color: black;
   }
 
   .tambah-beli {

@@ -1,9 +1,10 @@
+<!-- Panjar.svelte -->
 <script lang="ts">
   import { onMount } from "svelte";
   import { dbActions } from "$lib/api";
   import { fade, slide } from "svelte/transition";
   import { goto } from "$app/navigation"; // Import navigasi SvelteKit
-  import { X, Calendar, Package, User, ChevronRight } from "lucide-svelte";
+  import { X, Calendar, Package, User, ChevronRight, RefreshCcw } from "lucide-svelte";
 
   // --- States (Svelte 5) ---
   let debts = $state([]);
@@ -35,7 +36,7 @@
 
   // Fungsi navigasi ke halaman income dengan ID spesifik
   function goToReceive(id: string) {
-    goto(`/income?id=${id}`);
+    goto(`/terima?id=${id}`);
   }
 
   function rupiah(n: number) {
@@ -62,7 +63,7 @@
 
   <div class="header-section">
     <h3>Daftar Tunggu Barang (DP)</h3>
-    <button class="btn-refresh" onclick={loadData}>🔄 Segarkan</button>
+    <button class="btn-refresh" onclick={loadData}><RefreshCcw size=20 /> Segarkan</button>
   </div>
 
   {#if loading}
@@ -437,5 +438,8 @@
     color: #0984e3;
     font-size: 13px;
     cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 7px;
   }
 </style>

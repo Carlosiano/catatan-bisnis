@@ -12,13 +12,13 @@
   } from "lucide-svelte";
 
   const menus = [
-    // { name: "Home", path: "/", icon: House },
+    { name: "Home", path: "/", icon: House },
     // { name: 'Pemasok', path: '/sellers', icon: Truck},
-    { name: "Beli", path: "/purchases", icon: ShoppingCart },
-    { name: "Terima", path: "/income", icon: BanknoteArrowDown },
-    { name: "DP/Panjar", path: "/dp", icon: HandCoins },
-    { name: "Utang", path: "/debts", icon: Banknote },
-    { name: "Items", path: "/items", icon: PackagePlus },
+    { name: "Beli", path: "/beli", icon: ShoppingCart },
+    { name: "Terima", path: "/terima", icon: BanknoteArrowDown },
+    { name: "DP/Panjar", path: "/panjar", icon: HandCoins },
+    // { name: "Utang", path: "/utang", icon: Banknote },
+    // { name: "Items", path: "/item", icon: PackagePlus },
   ];
 
   // Fungsi helper untuk cek apakah link sedang aktif
@@ -52,8 +52,7 @@
     width: 100%;
     background: white;
     border-top: 1px solid #eee;
-    z-index: 100;
-    margin-bottom: 38px;
+    /* z-index: 100; */
   }
 
   .nav-menu {

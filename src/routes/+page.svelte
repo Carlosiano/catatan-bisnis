@@ -1,62 +1,69 @@
 <script>
-  import { onMount } from "svelte";
-  import { getDB } from "$lib/api";
   import { goto } from "$app/navigation";
-  import { initDB } from "$lib/jsondb";
+  import Dashboard2 from "$pages/Dashboard2.svelte";
 
-  let summary = {
-    totalUangKeluar: 0,
-    totalUangKembali: 0,
-    totalNilaiBarang: 0,
-    sisaDP: 0,
-    jumlahTransaksiHutang: 0
-  };
 
-  let topSellers = [];
+// goto("beli")
 
-  async function loadDashboard() {
-    const db = await getDB();
-    const purchases = db.purchases || [];
-    const debts = db.debts || [];
 
-    // 1. Hitung Uang Keluar (DP + Pelunasan Langsung)
-    const uangKeluar = purchases.reduce((a, b) => a + (b.uangKeluar || 0), 0) + 
-                       debts.reduce((a, b) => a + (b.uangDibayar || 0), 0);
+  // import { onMount } from "svelte";
+  // import { getDB } from "$lib/api";
+  // import { goto } from "$app/navigation";
+  // import { initDB } from "$lib/jsondb";
 
-    // 2. Hitung Uang yang Kembali (Retur)
-    const uangKembali = purchases.reduce((a, b) => a + (b.uangKembali || 0), 0);
+  // let summary = {
+  //   totalUangKeluar: 0,
+  //   totalUangKembali: 0,
+  //   totalNilaiBarang: 0,
+  //   sisaDP: 0,
+  //   jumlahTransaksiHutang: 0
+  // };
 
-    // 3. Hitung Total Nilai Barang yang Sudah Diterima
-    const nilaiBarang = purchases.reduce((a, b) => a + (b.total || 0), 0);
+  // let topSellers = [];
 
-    // 4. Hitung Sisa DP yang masih aktif di tabel debts
-    const sisaDP = debts.reduce((a, b) => a + (b.uangDibayar || 0), 0);
+  // async function loadDashboard() {
+  //   const db = await getDB();
+  //   const purchases = db.purchases || [];
+  //   const debts = db.debts || [];
 
-    summary = {
-      totalUangKeluar: uangKeluar,
-      totalUangKembali: uangKembali,
-      totalNilaiBarang: nilaiBarang,
-      sisaDP: sisaDP,
-      jumlahTransaksiHutang: debts.length
-    };
-  }
+  //   // 1. Hitung Uang Keluar (DP + Pelunasan Langsung)
+  //   const uangKeluar = purchases.reduce((a, b) => a + (b.uangKeluar || 0), 0) + 
+  //                      debts.reduce((a, b) => a + (b.uangDibayar || 0), 0);
 
-  function rupiah(n) {
-    return new Intl.NumberFormat("id-ID", {
-      style: "currency",
-      currency: "IDR",
-      maximumFractionDigits: 0
-    }).format(n);
-  }
+  //   // 2. Hitung Uang yang Kembali (Retur)
+  //   const uangKembali = purchases.reduce((a, b) => a + (b.uangKembali || 0), 0);
 
-  onMount(async () => {
-    await initDB();
-  });
+  //   // 3. Hitung Total Nilai Barang yang Sudah Diterima
+  //   const nilaiBarang = purchases.reduce((a, b) => a + (b.total || 0), 0);
 
-  onMount(loadDashboard);
+  //   // 4. Hitung Sisa DP yang masih aktif di tabel debts
+  //   const sisaDP = debts.reduce((a, b) => a + (b.uangDibayar || 0), 0);
+
+  //   summary = {
+  //     totalUangKeluar: uangKeluar,
+  //     totalUangKembali: uangKembali,
+  //     totalNilaiBarang: nilaiBarang,
+  //     sisaDP: sisaDP,
+  //     jumlahTransaksiHutang: debts.length
+  //   };
+  // }
+
+  // function rupiah(n) {
+  //   return new Intl.NumberFormat("id-ID", {
+  //     style: "currency",
+  //     currency: "IDR",
+  //     maximumFractionDigits: 0
+  //   }).format(n);
+  // }
+
+  // onMount(async () => {
+  //   await initDB();
+  // });
+
+  // onMount(loadDashboard);
 </script>
 
-<div class="dashboard-container">
+<!-- <div class="dashboard-container">
   <header class="dash-header">
     <h1>Ringkasan Usaha</h1>
     <p>{new Date().toLocaleDateString('id-ID', { dateStyle: 'full' })}</p>
@@ -90,9 +97,9 @@
       Lihat Riwayat Transaksi
     </button>
   </div>
-</div>
+</div> -->
 
-<style>
+<!-- <style>
   .dashboard-container {
     padding: 20px;
     background: #f8f9fa;
@@ -185,4 +192,6 @@
       grid-column: span 1;
     }
   }
-</style>
+</style> -->
+
+<Dashboard2 />

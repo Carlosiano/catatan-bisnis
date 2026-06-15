@@ -1,8 +1,16 @@
 <script lang="ts">
-  import { dbActions, getDB } from "$lib/api";
+  import { dbActions, getDB, initDB } from "$lib/api";
   import { onMount } from "svelte";
   import { showAddPurchases } from "$lib/stores";
-  import { Plus, Wallet } from "lucide-svelte";
+  import {
+    ArrowLeft,
+    Check,
+    ChevronRight,
+    Edit2,
+    Trash2,
+    X,
+    Plus
+  } from "lucide-svelte";
 
   // --- Interfaces ---
   interface Seller {
@@ -12,474 +20,604 @@
   interface Item {
     id: string;
     name: string;
-    defaultUnitId?: string;
   }
   interface Unit {
     id: string;
     name: string;
   }
 
-  // --- States (Runes) ---
+  let { loadListBeli } = $props();
+
+  // --- States ---
+  let step = $state(1); // 1: Penjual, 2: Barang, 3: Nominal, 4: Manage Sellers
   let sellers = $state<Seller[]>([]);
   let items = $state<Item[]>([]);
   let units = $state<Unit[]>([]);
 
   let sellerId = $state("");
-  let itemName = $state("kelapa");
+  let sellerNameInput = $state(""); // State penampung ketikan nama penjual
+  let itemName = $state("");
   let unitName = $state("");
-
-  // Menggunakan undefined agar input kosong di awal
   let jumlah = $state<number | undefined>();
   let harga = $state<number | undefined>();
-  let uangDibayar = $state<number | undefined>();
 
-  let isDebt = $state(false);
+  // --- Derived State Svelte 5 ---
+  // Menampilkan daftar penjual yang cocok dengan ketikan input
+  let filteredSellers = $derived(
+    sellers.filter((s) =>
+      s.name.toLowerCase().includes(sellerNameInput.toLowerCase())
+    )
+  );
 
-  // --- Derived States ---
+  // Mengecek apakah nama yang diketik persis sama dengan salah satu yang ada di DB
+  let isExactSellerExist = $derived(
+    sellers.some((s) => s.name.toLowerCase() === sellerNameInput.trim().toLowerCase())
+  );
+
+  let itemSuggestions = $derived(
+    items.filter(
+      (i) => i.name.toLowerCase().includes(itemName.toLowerCase()) && itemName.toLowerCase() !== i.name.toLowerCase()
+    )
+  );
+
+  let unitSuggestions = $derived(
+    units.filter(
+      (u) => u.name.toLowerCase().includes(unitName.toLowerCase()) && unitName.toLowerCase() !== u.name.toLowerCase()
+    )
+  );
+
+  const selectedSellerName = $derived(
+    sellers.find((s) => s.id === sellerId)?.name || sellerNameInput
+  );
+  
   const totalNilaiBarang = $derived((jumlah ?? 0) * (harga ?? 0));
-  const sisaKekurangan = $derived(
-    Math.max(0, totalNilaiBarang - (uangDibayar ?? 0)),
-  );
 
-  // Tambahkan ini:
-  const placeholderJumlah = $derived(
-    unitName ? `Jumlah (${unitName})` : "Jumlah",
-  );
-  const placeholderHarga = $derived(
-    unitName ? `Harga per ${unitName}` : "Harga per unit",
-  );
-
-  // --- Effects ---
-  // Sinkronisasi uang dibayar jika bukan mode DP
-  $effect(() => {
-    if (!isDebt) {
-      // Mode Tunai: Otomatis isi sesuai total
-      uangDibayar = totalNilaiBarang > 0 ? totalNilaiBarang : undefined;
-    } else {
-      // Mode DP: Kosongkan jika sebelumnya nilainya sama dengan total
-      // Ini agar saat user klik checkbox "Uang keluar sekarang...", inputnya kosong
-      if (uangDibayar === totalNilaiBarang) {
-        uangDibayar = undefined;
-      }
-    }
-  });
-
-  // Pantau perubahan itemName untuk satuan default
-  $effect(() => {
-    if (itemName && items.length > 0) {
-      applyDefaultUnit();
-    }
-  });
-
-  // --- Functions ---
   async function load() {
-    const db = await getDB();
-    const [sData, iData] = await Promise.all([
-      db.select("SELECT * FROM sellers ORDER BY name ASC"),
-      db.select("SELECT * FROM items ORDER BY name ASC"),
-    ]);
+    try {
+      await initDB();
+      sellers = await dbActions.getSellers();
+      items = await dbActions.getItems();
+      units = await dbActions.getUnits();
+    } catch (e) {
+      console.error("Gagal memuat data master:", e);
+    }
+  }
 
-    sellers = sData;
-    items = iData;
+  // --- Registrasi Otomatis dari Input Ketikan ---
+  async function handleAutoCreateSeller(customName: string) {
+    const cleanName = customName.trim();
+    if (!cleanName) return;
 
     try {
-      units = await db.select("SELECT * FROM units ORDER BY name ASC");
-    } catch (e) {
-      units = [];
-    }
-    applyDefaultUnit();
-  }
-
-  function applyDefaultUnit() {
-    const selectedItem = items.find((i) => i.name === itemName);
-    if (selectedItem?.defaultUnitId) {
-      const matchedUnit = units.find(
-        (u) => u.id === selectedItem.defaultUnitId,
-      );
-      if (matchedUnit) unitName = matchedUnit.name;
-    }
-  }
-
-  async function quickAddSeller() {
-    const name = prompt("Masukkan nama penjual baru:");
-    if (name) {
       const db = await getDB();
-      const id = crypto.randomUUID();
-      await db.execute("INSERT INTO sellers (id, name) VALUES ($1, $2)", [
-        id,
-        name,
-      ]);
-      await load();
-      sellerId = id;
+      const newId = crypto.randomUUID();
+      await db.execute("INSERT INTO sellers (id, name) VALUES ($1, $2)", [newId, cleanName]);
+      
+      await load(); // Reload data dari DB
+      sellerId = newId;
+      sellerNameInput = cleanName;
+      step = 2; // Langsung lompat ke langkah input barang
+    } catch (err) {
+      alert("Gagal mendaftarkan penjual baru otomatis: " + err);
     }
   }
 
-  async function quickAddItem() {
-    const name = prompt("Masukkan nama barang baru:");
-    if (name) {
-      const db = await getDB();
-      const id = crypto.randomUUID();
+  async function editSeller(id: string, oldName: string) {
+    const newName = prompt("Ubah nama penjual:", oldName);
+    if (!newName || newName === oldName) return;
+    const db = await getDB();
+    await db.execute("UPDATE sellers SET name = $1 WHERE id = $2", [newName, id]);
+    await load();
+    await loadListBeli();
+  }
+
+  async function deleteSeller(id: string) {
+    if (!confirm("Hapus penjual ini beserta seluruh riwayat pembeliannya?")) return;
+    const db = await getDB();
+    await db.execute(`DELETE FROM purchases WHERE "sellerId" = $1`, [id]);
+    await db.execute(`DELETE FROM debts WHERE "sellerId" = $1`, [id]);
+    await db.execute("DELETE FROM sellers WHERE id = $1", [id]);
+    if (sellerId === id) sellerId = "";
+    await load();
+    await loadListBeli();
+  }
+
+  async function handleAddItemUnit() {
+    if (!itemName || !unitName) return alert("Nama Barang dan Satuan wajib diisi!");
+    const db = await getDB();
+    
+    if (!items.find((i) => i.name.toLowerCase() === itemName.trim().toLowerCase())) {
       await db.execute("INSERT INTO items (id, name) VALUES ($1, $2)", [
-        id,
-        name.toLowerCase(),
+        crypto.randomUUID(),
+        itemName.trim().toLowerCase(),
       ]);
-      await load();
-      itemName = name.toLowerCase();
     }
-  }
-
-  async function quickAddUnit() {
-    const name = prompt("Masukkan nama satuan baru:");
-    if (name) {
-      const db = await getDB();
-      try {
-        await db.execute("INSERT INTO units (id, name) VALUES ($1, $2)", [
-          crypto.randomUUID(),
-          name.toLowerCase(),
-        ]);
-        await load();
-        unitName = name.toLowerCase();
-      } catch (e) {
-        alert("Tabel units belum tersedia.");
-      }
+    if (!units.find((u) => u.name.toLowerCase() === unitName.trim().toLowerCase())) {
+      await db.execute("INSERT INTO units (id, name) VALUES ($1, $2)", [
+        crypto.randomUUID(),
+        unitName.trim().toLowerCase(),
+      ]);
     }
+    await load();
+    step = 3;
   }
 
   async function add() {
-    if (!sellerId || !itemName || !jumlah || !harga || !unitName) {
-      alert("Mohon lengkapi semua data!");
-      return;
+    if (!sellerId || !itemName || !jumlah || !harga) {
+      return alert("Mohon lengkapi seluruh data kuantitas dan harga tunai!");
     }
 
     const data = {
       sellerId,
-      item: itemName,
-      unit: unitName,
-      jumlah: jumlah,
-      harga: harga,
+      item: itemName.trim(),
+      unit: unitName.trim(),
+      jumlah: Number(jumlah),
+      harga: Number(harga),
       total: totalNilaiBarang,
-      uangDibayar: uangDibayar ?? 0,
-      catatan: isDebt ? "DP Awal" : "Pembelian Tunai",
+      catatan: "Pembelian Tunai",
     };
 
     try {
-      if (isDebt) {
-        await dbActions.addDebt(data);
-      } else {
-        await dbActions.addPurchase(data);
-      }
+      await dbActions.addPurchase(data);
       $showAddPurchases = false;
+      await loadListBeli();
       window.location.reload();
     } catch (err) {
-      alert("Gagal menyimpan ke SQLite");
+      console.error("Gagal menyimpan transaksi tunai:", err);
+      alert("Gagal simpan transaksi: " + err);
     }
   }
 
-  function rupiah(n: number | undefined) {
-    return new Intl.NumberFormat("id-ID").format(n ?? 0);
-  }
-
   onMount(load);
+
+$effect(() => {
+    if (itemName.trim() !== "") {
+      // Cari apakah teks barang yang diketik sudah terdaftar di database master
+      const matchItem = items.find(
+        (i) => i.name.toLowerCase() === itemName.trim().toLowerCase()
+      );
+      
+      // Jika ketemu dan barang tersebut punya pasangan nama satuan default, isi otomatis kolom satuannya
+      if (matchItem && matchItem.defaultUnitName) {
+        unitName = matchItem.defaultUnitName;
+      }
+    }
+  });
 </script>
 
-<div class="modal-overlay" onclick={() => ($showAddPurchases = false)}>
-  <div class="modal-content" onclick={(e) => e.stopPropagation()}>
-    <div class="modal-header">
-      <h3>{isDebt ? "Bayar DP / Panjar" : "Tambah Pembelian"}</h3>
-      {#if isDebt}
-        <span class="debt-badge">Mode DP</span>
+{#if $showAddPurchases}
+  <div class="modal-overlay" onclick={() => ($showAddPurchases = false)}>
+    <div class="modal-content" onclick={(e) => e.stopPropagation()}>
+      <div class="modal-header">
+        {#if step > 1}
+          <button class="btn-back" onclick={() => (step = step === 4 ? 1 : step - 1)}>
+            <ArrowLeft size={20} />
+          </button>
+        {/if}
+        <h3 class="label-transaksi-tunai">
+          {step === 4 ? "Kelola Penjual" : "Pembelian Tunai"}
+        </h3>
+        <button class="btn-close" onclick={() => ($showAddPurchases = false)}>
+          <X size={20} />
+        </button>
+      </div>
+
+      <hr />
+
+      {#if step === 1}
+        <div class="field-header">
+          <label for="seller-search">Nama Penjual</label>
+          <button class="text-btn" onclick={() => (step = 4)}>Edit Daftar</button>
+        </div>
+
+        <div class="search-wrapper">
+          <input
+            id="seller-search"
+            type="text"
+            bind:value={sellerNameInput}
+            placeholder="Ketik nama penjual..."
+            class="search-input"
+          />
+        </div>
+
+        <div class="list-container">
+          {#if sellerNameInput.trim() !== "" && !isExactSellerExist}
+            <button class="list-item add-auto" onclick={() => handleAutoCreateSeller(sellerNameInput)}>
+              <span class="create-text"><Plus size={14} /> Buat baru: "<strong>{sellerNameInput}</strong>"</span>
+              <ChevronRight size={16} />
+            </button>
+          {/if}
+
+          {#each filteredSellers as s}
+            <button
+              class="list-item"
+              class:active={sellerId === s.id}
+              onclick={() => {
+                sellerId = s.id;
+                sellerNameInput = s.name;
+                step = 2;
+              }}
+            >
+              {s.name}
+              {#if sellerId === s.id}<Check size={16} />{/if}
+            </button>
+          {:else}
+            {#if sellerNameInput.trim() === ""}
+              <p class="empty-text">Silakan ketik nama petani/penjual di atas...</p>
+            {/if}
+          {/each}
+        </div>
+      {:else if step === 2}
+        <div class="step-body">
+          <div class="info-tag">
+            Penjual: <strong>{selectedSellerName}</strong>
+          </div>
+
+          <div class="input-wrapper">
+            <label for="item-name">Nama Barang</label>
+            <input id="item-name" bind:value={itemName} placeholder="Kelapa subur, kelapa reject..." />
+            {#if itemName && itemSuggestions.length > 0}
+              <div class="suggestions">
+                {#each itemSuggestions as sugg}
+                  <button onclick={() => (itemName = sugg.name)}>{sugg.name}</button>
+                {/each}
+              </div>
+            {/if}
+          </div>
+
+          <div class="input-wrapper">
+            <label for="unit-name">Satuan</label>
+            <input id="unit-name" bind:value={unitName} placeholder="subur, kg, butir..." />
+            {#if unitName && unitSuggestions.length > 0}
+              <div class="suggestions">
+                {#each unitSuggestions as sugg}
+                  <button onclick={() => (unitName = sugg.name)}>{sugg.name}</button>
+                {/each}
+              </div>
+            {/if}
+          </div>
+
+          <button class="btn-next" onclick={handleAddItemUnit}>
+            Lanjut Kuantitas <ChevronRight size={18} />
+          </button>
+        </div>
+      {:else if step === 3}
+        <div class="step-body">
+          <div class="info-summary">
+            <strong>{selectedSellerName}</strong> <span class="dot">•</span>
+            <span>{itemName} / {unitName}</span>
+          </div>
+
+          <div class="row">
+            <div class="input-group">
+              <label for="quantity-input">Jumlah {itemName}</label>
+              <input id="quantity-input" type="number" bind:value={jumlah} placeholder="0" />
+              <span class="unit-label">/{unitName}</span>
+            </div>
+
+            <div class="input-group">
+              <label for="price-input">Harga Per {unitName}</label>
+              <input id="price-input" type="number" bind:value={harga} placeholder="Rp 0" />
+              <span class="unit-label">/{unitName}</span>
+            </div>
+          </div>
+
+          <div class="total-box-simple">
+            <span>Total Bayar Tunai:</span>
+            <strong>Rp {totalNilaiBarang.toLocaleString('id-ID')}</strong>
+          </div>
+
+          <button class="save-cash" onclick={add}>
+            Simpan Transaksi Tunai
+          </button>
+        </div>
+      {:else if step === 4}
+        <div class="field-header">
+          <label for="manage-search">Cari Penjual Kontrol</label>
+        </div>
+        <input
+          id="manage-search"
+          type="text"
+          bind:value={sellerNameInput}
+          placeholder="Cari nama untuk edit/hapus..."
+          class="search-input"
+          style="margin-bottom: 10px;"
+        />
+        <div class="list-container">
+          {#each filteredSellers as s}
+            <div class="list-item manage">
+              <span>{s.name}</span>
+              <div class="item-actions">
+                <button onclick={() => editSeller(s.id, s.name)} aria-label="Edit Penjual"><Edit2 size={16} /></button>
+                <button class="del" onclick={() => deleteSeller(s.id)} aria-label="Hapus Penjual"><Trash2 size={16} /></button>
+              </div>
+            </div>
+          {/each}
+        </div>
+        <button class="btn-next" onclick={() => (step = 1)}>Selesai</button>
       {/if}
     </div>
-
-    <label class="debt-option">
-      <input
-        type="checkbox"
-        bind:checked={isDebt}
-        style="width: fit-content;"
-      />
-      <span>Uang keluar sekarang, barang masuk nanti?</span>
-    </label>
-
-    <hr />
-
-    <div class="field-header">
-      <label for="seller">Penjual</label>
-      <button class="btn-plus" onclick={quickAddSeller}
-        ><Plus size={20} /> Tambah</button
-      >
-    </div>
-    <select id="seller" bind:value={sellerId}>
-      <option value="">Pilih penjual</option>
-      {#each sellers as s}
-        <option value={s.id}>{s.name}</option>
-      {/each}
-    </select>
-
-    <div class="row">
-      <div class="col">
-        <div class="field-header">
-          <label class="small-label" for="item">Barang</label>
-          <button class="btn-plus" onclick={quickAddItem}
-            ><Plus size={20} />Tambah</button
-          >
-        </div>
-        <select id="item" bind:value={itemName}>
-          {#each items as i}
-            <option value={i.name}>{i.name}</option>
-          {/each}
-        </select>
-      </div>
-      <div class="col">
-        <div class="field-header">
-          <label class="small-label" for="unit">Satuan</label>
-          <button class="btn-plus" onclick={quickAddUnit}
-            ><Plus size={20} />Tambah</button
-          >
-        </div>
-        <select id="unit" bind:value={unitName}>
-          <option value="">Pilih...</option>
-          {#each units as u}
-            <option value={u.name}>{u.name}</option>
-          {/each}
-        </select>
-      </div>
-    </div>
-
-    <label for="plan">Rencana Pembelian (Janji)</label>
-    <div class="row">
-      <input
-        type="number"
-        bind:value={jumlah}
-        placeholder={placeholderJumlah}
-      />
-
-      <input type="number" bind:value={harga} placeholder={placeholderHarga} />
-    </div>
-
-    {#if isDebt}
-      <div class="dp-section">
-        <label for="dp"><Wallet size={14} /> Uang Tunai yang Dibayarkan</label>
-        <input
-          id="dp"
-          type="number"
-          bind:value={uangDibayar}
-          class="dp-input"
-          placeholder="Masukkan nominal DP..."
-        />
-        <div class="dp-info-text">
-          Sisa kekurangan: <strong>Rp {rupiah(sisaKekurangan)}</strong>
-        </div>
-      </div>
-    {/if}
-
-    <div class="total-box">
-      <div class="total-row">
-        <span>Total Nilai Barang:</span>
-        <span>Rp {rupiah(totalNilaiBarang)}</span>
-      </div>
-      <div class="total-row main">
-        <span>Kas Keluar Hari Ini:</span>
-        <span class={isDebt ? "text-warn" : "text-success"}
-          >Rp {rupiah(uangDibayar)}</span
-        >
-      </div>
-    </div>
-
-    <div class="actions">
-      <button class="cancel" onclick={() => ($showAddPurchases = false)}
-        >Batal</button
-      >
-      <button class={isDebt ? "save-debt" : "save"} onclick={add}>
-        {isDebt ? "Simpan DP" : "Simpan Transaksi"}
-      </button>
-    </div>
   </div>
-</div>
+{/if}
 
 <style>
-  /* Style tetap sama dengan CSS Anda yang sudah diperbarui dengan warna merah/dark red */
-  /* Pastikan menggunakan style yang Anda berikan sebelumnya */
+  .total-box-simple {
+    background: #f0fff4;
+    border: 1px solid #c6f6d5;
+    padding: 15px;
+    border-radius: 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 14px;
+    color: #27ae60;
+    margin-top: 15px;
+    font-weight: 500;
+  }
+
   .modal-overlay {
     position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.5);
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
     display: flex;
     justify-content: center;
     align-items: center;
-    z-index: 999;
+    z-index: 1000;
   }
+  
   .modal-content {
     background: white;
-    padding: 18px;
-    border-radius: 12px;
-    width: 90%;
-    max-width: 420px;
+    padding: 20px;
+    border-radius: 20px;
+    width: 92%;
+    max-width: 400px;
+    max-height: 85vh;
+    overflow-y: auto;
+  }
+
+  .modal-header {
     display: flex;
-    flex-direction: column;
-    gap: 5px;
-    font-family: sans-serif;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  
+  .btn-close, .btn-back {
+    background: none;
+    border: none;
+    padding: 5px;
+    color: #666;
+    cursor: pointer;
   }
 
   .field-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    margin-bottom: 8px;
+  }
+  
+  .text-btn {
+    background: none;
+    border: none;
+    color: #0088ad;
+    font-size: 12px;
+    font-weight: bold;
+    cursor: pointer;
+  }
+
+  .list-container {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 260px;
+    overflow-y: auto;
     margin-top: 5px;
-    /* margin-bottom: 8px; */
+    border-top: 1px solid #f0f0f0;
+    padding-top: 10px;
   }
-  .small-label {
-    font-size: 1rem;
-    color: #777;
+  
+  .list-item {
+    padding: 14px;
+    border: 1.5px solid #eee;
+    border-radius: 12px;
+    background: white;
+    text-align: left;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 14px;
+    cursor: pointer;
+    color: #334155;
   }
-  .btn-plus {
+  
+  .list-item.active {
+    border-color: #27ae60;
+    color: #27ae60;
+    background: #f0fff4;
+    font-weight: 600;
+  }
+  
+  .list-item.add-auto {
+    border: 1.5px dashed #2563eb;
+    background: #eff6ff;
+    color: #2563eb;
+    font-weight: 500;
+  }
+
+  .list-item.add-auto .create-text {
     display: flex;
     align-items: center;
     gap: 4px;
-    background: #f0f0f0;
+  }
+
+  .list-item.manage {
+    background: #fafafa;
+    cursor: default;
+  }
+
+  .item-actions {
+    display: flex;
+    gap: 10px;
+  }
+  
+  .item-actions button {
+    background: white;
     border: 1px solid #ddd;
-    padding: 2px 8px;
-    border-radius: 4px;
+    padding: 6px;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  
+  .item-actions button.del {
+    color: #db3434;
+  }
+
+  .input-wrapper {
+    position: relative;
+    margin-bottom: 15px;
+  }
+  
+  .suggestions {
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    margin-top: 6px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    padding: 6px;
+  }
+  
+  .suggestions button {
     font-size: 11px;
-    cursor: pointer;
-  }
-  .btn-icon {
-    background: #eee;
+    background: #f1f5f9;
     border: none;
-    border-radius: 4px;
-    padding: 2px 5px;
+    padding: 5px 12px;
+    border-radius: 15px;
     cursor: pointer;
+    color: #475569;
   }
+
   .row {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 10px;
+    gap: 12px;
   }
-
-  .row .field-header {
-    margin-bottom: 8px;
+  
+  .input-group {
+    position: relative;
   }
-
-  input,
-  select {
-    padding: 10px;
-    border: 1px solid #ccc;
-    border-radius: 8px;
-    width: 100%;
-    box-sizing: border-box;
-    font-size: 14px;
-  }
-  .dp-section {
-    background: #f6f1f1;
-    padding: 12px;
-    border-radius: 8px;
-    border-left: 4px solid #db3434;
-    margin-top: 5px;
-  }
-  .dp-section label {
+  
+  .unit-label {
+    position: absolute;
+    right: 12px;
+    top: 36px;
     font-size: 12px;
+    color: #94a3b8;
+  }
+
+  .btn-next, .save-cash {
+    width: 100%;
+    padding: 14px;
+    border-radius: 12px;
+    border: none;
     font-weight: bold;
-    color: #b92929;
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    margin-bottom: 5px;
+    color: white;
+    cursor: pointer;
+    margin-top: 15px;
+    font-size: 15px;
   }
-  .dp-input {
-    border: 2px solid #db3434;
-    font-weight: bold;
-    font-size: 16px;
-    color: #b92929;
+  
+  .btn-next {
+    background: #334155;
   }
-  .dp-info-text {
-    font-size: 11px;
-    margin-top: 5px;
-    color: #666;
+  
+  .save-cash {
+    background: #27ae60;
+    box-shadow: 0 4px 12px rgba(39, 174, 96, 0.2);
   }
-  .total-box {
-    background: #fafafa;
-    padding: 12px;
-    border-radius: 8px;
-    margin: 10px 0;
-    border: 1px solid #eee;
-  }
-  .total-row {
-    display: flex;
-    justify-content: space-between;
+
+  .info-tag {
+    background: #f0fff4;
+    padding: 10px;
+    border-radius: 10px;
+    color: #1e824c;
     font-size: 13px;
-    color: #666;
+    margin-bottom: 15px;
   }
-  .total-row.main {
-    font-size: 16px;
-    font-weight: bold;
-    color: #333;
-    margin-top: 5px;
-    border-top: 1px solid #eee;
-    padding-top: 5px;
-  }
-  .text-success {
-    color: #27ae60;
-  }
-  .text-warn {
-    color: #e67e22;
-  }
-  .actions {
-    display: flex;
-    gap: 10px;
-    /* margin-top: 10px; */
-  }
-  .save {
-    flex: 1;
-    background: #2ecc71;
-    color: white;
-    border: none;
-    padding: 12px;
-    border-radius: 8px;
-    font-weight: bold;
-    cursor: pointer;
-  }
-  .save-debt {
-    flex: 1;
-    background: #db3434;
-    color: white;
-    border: none;
-    padding: 12px;
-    border-radius: 8px;
-    font-weight: bold;
-    cursor: pointer;
-  }
-  .cancel {
-    background: #eee;
-    border: none;
-    padding: 12px;
-    border-radius: 8px;
-    cursor: pointer;
-  }
-  .debt-badge {
-    background: #db3434;
-    color: white;
-    padding: 2px 8px;
-    border-radius: 4px;
-    font-size: 10px;
-    font-weight: bold;
-  }
-  .debt-option {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    background: #fbebeb;
+
+  .info-summary {
+    font-size: 14px;
+    color: #475569;
+    margin-bottom: 12px;
+    background: #f8fafc;
     padding: 10px;
     border-radius: 8px;
-    border: 1px dashed #db3434;
-    cursor: pointer;
-    font-size: 13px;
-    color: #b92929;
   }
+
+  .info-summary .dot {
+    margin: 0 4px;
+  }
+
+  input {
+    padding: 12px;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 10px;
+    width: 100%;
+    font-size: 14px;
+    outline: none;
+    background: #ffffff;
+    color: #334155;
+    margin-top: 4px;
+  }
+  
+  input:focus {
+    border-color: #27ae60;
+  }
+  
+  label {
+    font-size: 12px;
+    font-weight: 600;
+    display: block;
+    color: #475569;
+    text-transform: uppercase;
+  }
+  
   hr {
     border: none;
     border-top: 1px solid #eee;
-    margin: 5px 0;
+    margin-bottom: 12px;
+  }
+  
+  .label-transaksi-tunai {
+    color: #27ae60;
+    margin: 0;
+    font-size: 16px;
+  }
+
+  .search-wrapper {
+    margin-bottom: 12px;
+  }
+
+  .search-input {
+    background: #f8fafc;
+    border: 1.5px solid #e2e8f0;
+    padding: 12px;
+    font-size: 14px;
+    margin-top: 4px;
+  }
+
+  .search-input:focus {
+    background: white;
+    border-color: #27ae60;
+  }
+
+  .empty-text {
+    text-align: center;
+    font-size: 13px;
+    color: #94a3b8;
+    padding: 20px;
+    font-style: italic;
   }
 </style>

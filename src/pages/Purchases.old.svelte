@@ -1,7 +1,7 @@
 <script>
   import { onMount } from "svelte";
   import { getDB, insert } from "$lib/api";
-  import AddPurchaseModal from "$components/AddPurchaseModal.svelte";
+  import AddPurchaseModal from "$components/AddPurchaseModal.old.svelte";
   import { showAddPurchases } from "$lib/stores";
 
   let sellers = [];

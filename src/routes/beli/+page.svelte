@@ -1,17 +1,16 @@
+<!-- /src/routes/beli/+page.svelte -->
 <script>
-  import Purchasesnew from "$pages/Purchasesnew.svelte";
-  import { Plus } from "lucide-svelte";
-  import { showAddPurchases } from "$lib/stores";
+  import Beli from "$pages/Beli.svelte";
 </script>
 
 
-<div class="tambah-beli">
+<!-- <div class="tambah-beli">
   <button on:click={() => ($showAddPurchases = true)}>
     <Plus /> TAMBAH PEMBELIAN
   </button>
-</div>
+</div> -->
 
-<Purchasesnew />
+<Beli />
 
 
 <style>

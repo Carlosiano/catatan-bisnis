@@ -3,3 +3,12 @@
 - hapus saja kolom penjual karena sudah di grouping menggunakan nama penjual
 - dibagian penjual di group berdasarkan jenis barang
 - tambahkan fitur hapus
+- mungkin coba buat satu halaman saja bernama transaksi nanti bisa tambah transaksi beli atau terima.
+- tambahkan fuzzy finder untuk cari nama
+- pada list dp/panjar nilai lunasnya bisa minus dan ketika belum lunas tapi ditandai lunas
+- pada melakukan pengisian data pada halaman terima bahkan untuk yang sudah lunas masih bisa input dan simpan hasil inputannya
+- pada list di halaman beli bisa di tambahkan berapa harga per satuannya misal kelapa 10 subur dengan harga per subur 100ribu
+
+- pada panjar jika saya tambahkan contoh penjual kanis dengan panjar pada tanggal yang berbeda maka ada multiple list panjar atas nama kanis dan untuk proses terima barang jadi susah. saya ingin agar penjaul kanis misalnya dpnya di grup lalu di jumlahkan total panjarnya jadi ketika ingin potong panjar maka potong jumlahnya.
+- saya ingin jika nanti penjual ingin mengembalikan sebagian atau semua uang panjar tapi tidak terima barang
+- saya ingin agar panjar bisa di edit

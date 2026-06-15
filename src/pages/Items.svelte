@@ -1,152 +1,190 @@
 <script>
   import { onMount } from "svelte";
-  import { getDB, insert } from "$lib/api";
+  import { initDB } from "$lib/api";
 
   let items = [];
   let units = [];
-
   let itemName = "";
   let unitName = "";
+  let db;
 
   async function load() {
-    const db = await getDB();
-    items = db.items || [];
-    units = db.units || [];
+    db = await initDB();
+    items = await db.select("SELECT * FROM items ORDER BY name ASC");
+    units = await db.select("SELECT * FROM units ORDER BY name ASC");
   }
 
   async function addItem() {
     if (!itemName) return;
-
-    await insert("items", {
-      id: crypto.randomUUID(),
-      name: itemName.toLowerCase(),
-      defaultUnitId: "",
-    });
-
+    await db.execute("INSERT INTO items (id, name) VALUES ($1, $2)", [
+      crypto.randomUUID(),
+      itemName.toLowerCase(),
+    ]);
     itemName = "";
-    load();
+    await load();
   }
 
   async function addUnit() {
     if (!unitName) return;
-
-    await insert("units", {
-      id: crypto.randomUUID(),
-      name: unitName.toLowerCase(),
-    });
-
+    await db.execute("INSERT INTO units (id, name) VALUES ($1, $2)", [
+      crypto.randomUUID(),
+      unitName.toLowerCase(),
+    ]);
     unitName = "";
-    load();
+    await load();
+  }
+
+  async function updateDefaultUnit(itemId, unitId) {
+    await db.execute('UPDATE items SET "defaultUnitId" = $1 WHERE id = $2', [
+      unitId,
+      itemId,
+    ]);
+    await load();
   }
 
   async function deleteItem(id) {
     if (!confirm("Hapus barang ini?")) return;
-
-    await fetch("http://localhost:3000/delete", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ table: "items", id }),
-    });
-
-    load();
+    await db.execute("DELETE FROM items WHERE id = $1", [id]);
+    await load();
   }
+
   async function deleteUnit(id) {
     if (!confirm("Hapus satuan ini?")) return;
-
-    await fetch("http://localhost:3000/delete", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ table: "units", id }),
-    });
-
-    load();
-  }
-
-  async function setDefault(itemId, unitId) {
-    try {
-      const db = await getDB();
-
-      db.items = db.items.map((i) => {
-        if (i.id === itemId) {
-          i.defaultUnitId = unitId;
-        }
-        return i;
-      });
-
-      const response = await fetch("http://localhost:3000/save", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(db),
-      });
-
-      if (response.ok) {
-        load(); // Muat ulang data setelah berhasil simpan
-      } else {
-        console.error("Gagal menyimpan data");
-      }
-    } catch (error) {
-      console.error("Terjadi kesalahan koneksi:", error);
-    }
-  }
-
-  function getUnitName(id) {
-    return units.find((u) => u.id === id)?.name || "-";
+    await db.execute("DELETE FROM units WHERE id = $1", [id]);
+    await load();
   }
 
   onMount(load);
 </script>
 
-<h3>Master Barang & Satuan</h3>
+<div class="container">
+<div class="content">
 
-<!-- 🔥 TAMBAH BARANG -->
-<h4>Tambah Barang</h4>
-<input bind:value={itemName} placeholder="Nama barang (kopra)" />
-<button on:click={addItem}>Tambah Barang</button>
+  <h2>Master Data</h2>
 
-<!-- 🔥 TAMBAH SATUAN -->
-<h4>Tambah Satuan</h4>
-<input bind:value={unitName} placeholder="Satuan (kg, subur)" />
-<button on:click={addUnit}>Tambah Satuan</button>
+  <div class="input-stack">
+    <div class="card border-blue">
+      <h4>📦 Tambah Barang Baru</h4>
+      <div class="input-row">
+        <input bind:value={itemName} placeholder="Nama barang (misal: kopra)" />
+        <button class="btn-save btn-blue" on:click={addItem}>Tambah</button>
+      </div>
+    </div>
 
-<hr />
+    <div class="card border-purple">
+      <h4>⚖️ Tambah Satuan Baru</h4>
+      <div class="input-row">
+        <input bind:value={unitName} placeholder="Satuan (misal: kg, subur)" />
+        <button class="btn-save btn-purple" on:click={addUnit}>Tambah</button>
+      </div>
+    </div>
+  </div>
 
-<!-- 🔥 LIST -->
-<table border="1" cellpadding="6" style="width: 100%; text-align: left;">
-  <thead>
-    <tr>
-      <th>Barang</th>
-      <th>Default Satuan</th>
-      <th>Set Default</th>
-      <th>Aksi</th>
-    </tr>
-  </thead>
-  <tbody>
-    {#each items as item}
-      <tr>
-        <td>{item.name}</td>
-        <td>{getUnitName(item.defaultUnitId)}</td>
-        <td>
-          <select on:change={(e) => setDefault(item.id, e.target.value)}>
-            <option value="">Pilih</option>
-            {#each units as u}
-              <option value={u.id} selected={item.defaultUnitId === u.id}>{u.name}</option>
-            {/each}
-          </select>
-        </td>
-        <td>
-          <button on:click={() => deleteItem(item.id)} style="color: red;">Hapus</button>
-        </td>
-      </tr>
-    {/each}
-  </tbody>
-</table>
+  <hr class="divider" />
 
-<h4>Daftar Satuan</h4>
-<ul>
-  {#each units as u}
-    <li>
-      {u.name} 
-      <button on:click={() => deleteUnit(u.id)} style="color: red; margin-left: 10px;">x</button>
-    </li>
-  {/each}
-</ul>
+  <div class="table-container">
+    <h4>Daftar Barang & Satuan Default</h4>
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>Barang</th>
+            <th>Satuan Bawaan</th>
+            <th style="text-align: center;">Aksi</th>
+          </tr>
+        </thead>
+        <tbody>
+          {#each items as item}
+            <tr>
+              <td class="capitalize">{item.name}</td>
+              <td>
+                <select 
+                  class="select-style"
+                  value={item.defaultUnitId || ""} 
+                  on:change={(e) => updateDefaultUnit(item.id, e.target.value)}
+                >
+                  <option value="">-- Pilih --</option>
+                  {#each units as u}
+                    <option value={u.id}>{u.name}</option>
+                  {/each}
+                </select>
+              </td>
+              <td style="text-align: center;">
+                <button class="btn-del" on:click={() => deleteItem(item.id)}>Hapus</button>
+              </td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="unit-summary">
+    <h4>Semua Satuan Tersedia</h4>
+    <div class="badge-list">
+      {#each units as u}
+        <div class="badge">
+          {u.name}
+          <button on:click={() => deleteUnit(u.id)}>×</button>
+        </div>
+      {/each}
+    </div>
+  </div>
+</div>
+</div>
+
+<style>
+.container {
+  height: 88vh;
+  overflow-y: scroll;
+}
+  .content { padding: 15px; max-width: 600px; margin: auto; font-family: sans-serif; }
+  
+  /* DISUSUN KE BAWAH */
+  .input-stack { 
+    display: flex; 
+    flex-direction: column; 
+    gap: 15px; 
+    margin-bottom: 25px; 
+  }
+  
+  .card { 
+    background: #fff; 
+    padding: 15px; 
+    border-radius: 12px; 
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    border-left: 4px solid #ddd;
+  }
+  .border-blue { border-left-color: #3498db; }
+  .border-purple { border-left-color: #9b59b6; }
+
+  .card h4 { margin: 0 0 12px 0; font-size: 13px; color: #444; text-transform: uppercase; letter-spacing: 0.5px; }
+
+  .input-row { display: flex; gap: 8px; flex-direction: column; }
+  input { flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; outline: none; }
+  input:focus { border-color: #3498db; }
+  
+  .btn-save { padding: 10px 15px; border: none; border-radius: 8px; color: white; font-weight: bold; cursor: pointer; transition: opacity 0.2s; }
+  .btn-save:active { opacity: 0.7; }
+  .btn-blue { background: #3498db; }
+  .btn-purple { background: #9b59b6; }
+
+  .divider { border: none; height: 1px; background: #eee; margin: 30px 0; }
+
+  /* TABEL STYLES */
+  .table-container { background: white; border-radius: 12px; border: 1px solid #eee; overflow: hidden; }
+  .table-container h4 { padding: 15px; margin: 0; background: #fdfdfd; border-bottom: 1px solid #eee; font-size: 14px; }
+  .table-wrapper { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  th { background: #fcfcfc; padding: 12px; text-align: left; font-size: 12px; color: #888; border-bottom: 2px solid #eee; }
+  td { padding: 12px; border-bottom: 1px solid #f9f9f9; font-size: 14px; }
+
+  .capitalize { text-transform: capitalize; }
+  .select-style { width: 100%; padding: 5px; border-radius: 6px; border: 1px solid #eee; background: #fafafa; }
+  
+  .btn-del { color: #e74c3c; background: none; border: 1px solid #fadbd8; padding: 4px 8px; border-radius: 6px; cursor: pointer; font-size: 11px; }
+
+  .badge-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .badge { background: #f0f3f5; padding: 5px 12px; border-radius: 20px; display: flex; align-items: center; gap: 8px; font-size: 13px; border: 1px solid #e0e4e8; }
+  .badge button { border: none; background: none; color: #e74c3c; cursor: pointer; font-weight: bold; font-size: 16px; }
+</style>

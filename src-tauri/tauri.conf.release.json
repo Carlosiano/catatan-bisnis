@@ -13,8 +13,9 @@
     "windows": [
       {
         "title": "catatan-bisnis",
-        "width": 800,
-        "height": 600
+        "width": 384,
+        "height": 853.1,
+        "maximized": false
       }
     ],
     "security": {
