@@ -528,7 +528,7 @@ export const dbActions = {
       return [];
     }
   },
-async deleteOurDebtGroup(sellerId) {
+  async deleteOurDebtGroup(sellerId) {
     const db = await initDB();
     try {
       // 1. Hapus semua log mutasi transaksi utang/cicilan (tambah & kurang) milik petani ini
@@ -537,7 +537,7 @@ async deleteOurDebtGroup(sellerId) {
       // 2. PERBAIKAN: Hapus seluruh nota pembelian berkode utang kita, 
       // baik yang masih aktif ('hutang-kita') maupun yang sudah diselesaikan ('hutang-kita-lunas')
       await db.execute(
-        `DELETE FROM purchases WHERE "sellerId" = $1 AND status IN ('hutang-kita', 'hutang-kita-lunas')`, 
+        `DELETE FROM purchases WHERE "sellerId" = $1 AND status IN ('hutang-kita', 'hutang-kita-lunas')`,
         [sellerId]
       );
 
@@ -547,20 +547,36 @@ async deleteOurDebtGroup(sellerId) {
       throw err;
     }
   },
-  async deletePanjarGroup(sellerId) {
+async deletePanjarGroup(sellerId) {
     const db = await initDB();
     try {
-      // 1. Ambil semua id panjar (debts) milik petani ini yang berstatus aktif ('hutang')
-      const activeDebts = await db.select(`SELECT id FROM debts WHERE "sellerId" = $1 AND status = 'hutang'`, [sellerId]);
+      // 1. Ambil SEMUA id panjar (debts) milik petani ini tanpa memandang status
+      const allDebts = await db.select(`SELECT id FROM debts WHERE "sellerId" = $1`, [sellerId]);
 
-      if (activeDebts.length > 0) {
-        const debtIds = activeDebts.map(d => `'${d.id}'`).join(",");
+      if (allDebts.length > 0) {
+        const debtIds = allDebts.map(d => `'${d.id}'`).join(",");
         // 2. Hapus log transaksi potongan timbangan komoditas yang mengikat id panjar tersebut
         await db.execute(`DELETE FROM debt_transactions WHERE "debtId" IN (${debtIds})`);
       }
 
-      // 3. Hapus seluruh dokumen kontrak panjar aktif ('hutang') milik kelompok petani ini
-      await db.execute(`DELETE FROM debts WHERE "sellerId" = $1 AND status = 'hutang'`, [sellerId]);
+      // 3. Hapus seluruh dokumen kontrak panjar utama milik kelompok petani ini dari tabel debts
+      await db.execute(`DELETE FROM debts WHERE "sellerId" = $1`, [sellerId]);
+
+      // 4. PERBAIKAN: Bersihkan seluruh baris salinan timbangan atau suntikan dana terkait panjar 
+      // yang terlanjur menyeberang masuk ke tabel purchases (Halaman Beli), baik yang berstatus
+      // 'hutang' (nota panjar awal) maupun 'lunas'/'returned' hasil dari pengembalian/potong timbangan panjar.
+      // Kita gunakan filter text catatan 'Panjar' atau status 'hutang' milik seller ini agar tidak salah hapus transaksi beli tunai murni.
+      await db.execute(
+        `DELETE FROM purchases 
+         WHERE "sellerId" = $1 
+         AND (
+           status = 'hutang' 
+           OR catatan LIKE '%Panjar%' 
+           OR catatan LIKE '%Pengembalian Uang DP%' 
+           OR catatan LIKE '%Pengembalian DP%'
+         )`, 
+        [sellerId]
+      );
 
       return true;
     } catch (err) {
@@ -568,7 +584,7 @@ async deleteOurDebtGroup(sellerId) {
       throw err;
     }
   },
-async deleteOurDebtTransaction(transactionId) {
+  async deleteOurDebtTransaction(transactionId) {
     const db = await initDB();
     try {
       // 1. Ambil info log mutasi sebelum dihapus
@@ -620,25 +636,25 @@ async deleteOurDebtTransaction(transactionId) {
                  WHERE id = $3`,
                 [sisaUangRestore, cleanCatatan, debt.id]
               );
-              
+
               sisaUangRestore = 0; // Uang 4 juta sudah berhasil dikembalikan ke pangkuan nota utang berjalan
-            } 
+            }
             else if (debt.status === 'hutang-kita') {
               // Jika nota tersebut kemarin hanya dipotong sebagian (belum sampai lunas),
               // kembalikan sisa potongan cicilannya ke total utang nota ini.
               const cleanCatatan = debt.catatan.replace(" | Dipotong Sebagian", "");
-              
+
               await db.execute(
                 `UPDATE purchases 
                  SET total = total + $1, catatan = $2 
                  WHERE id = $3`,
                 [sisaUangRestore, cleanCatatan, debt.id]
               );
-              
+
               sisaUangRestore = 0;
             }
           }
-        } 
+        }
         // 4. JIKA YANG DIHAPUS ADALAH PEMBUKAAN UTANG BARU (tipe: 'tambah')
         else if (tipe === 'tambah') {
           await db.execute(

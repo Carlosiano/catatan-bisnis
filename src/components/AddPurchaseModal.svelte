@@ -3,6 +3,7 @@
   import { dbActions, getDB, initDB } from "$lib/api";
   import { onMount } from "svelte";
   import { showAddPurchases } from "$lib/stores";
+  import { angkaKeTerbilang } from "$lib/utils/terbilang";
   import {
     ArrowLeft,
     Check,
@@ -10,7 +11,7 @@
     Edit2,
     Trash2,
     X,
-    Plus
+    Plus,
   } from "lucide-svelte";
 
   // --- Interfaces ---
@@ -46,32 +47,48 @@
   // Menampilkan daftar penjual yang cocok dengan ketikan input
   let filteredSellers = $derived(
     sellers.filter((s) =>
-      s.name.toLowerCase().includes(sellerNameInput.toLowerCase())
-    )
+      s.name.toLowerCase().includes(sellerNameInput.toLowerCase()),
+    ),
   );
 
   // Mengecek apakah nama yang diketik persis sama dengan salah satu yang ada di DB
   let isExactSellerExist = $derived(
-    sellers.some((s) => s.name.toLowerCase() === sellerNameInput.trim().toLowerCase())
+    sellers.some(
+      (s) => s.name.toLowerCase() === sellerNameInput.trim().toLowerCase(),
+    ),
   );
 
   let itemSuggestions = $derived(
     items.filter(
-      (i) => i.name.toLowerCase().includes(itemName.toLowerCase()) && itemName.toLowerCase() !== i.name.toLowerCase()
-    )
+      (i) =>
+        i.name.toLowerCase().includes(itemName.toLowerCase()) &&
+        itemName.toLowerCase() !== i.name.toLowerCase(),
+    ),
   );
 
   let unitSuggestions = $derived(
     units.filter(
-      (u) => u.name.toLowerCase().includes(unitName.toLowerCase()) && unitName.toLowerCase() !== u.name.toLowerCase()
-    )
+      (u) =>
+        u.name.toLowerCase().includes(unitName.toLowerCase()) &&
+        unitName.toLowerCase() !== u.name.toLowerCase(),
+    ),
   );
 
   const selectedSellerName = $derived(
-    sellers.find((s) => s.id === sellerId)?.name || sellerNameInput
+    sellers.find((s) => s.id === sellerId)?.name || sellerNameInput,
   );
-  
+
   const totalNilaiBarang = $derived((jumlah ?? 0) * (harga ?? 0));
+
+  // Tambahkan state terbilang untuk harga per satuan dan total bayar tunai
+  let terbilangHargaSatuan = $derived(
+    harga ? angkaKeTerbilang(Number(harga)) : "",
+  );
+  let terbilangTotalBayar = $derived(
+    totalNilaiBarang
+      ? angkaKeTerbilang(Number(totalNilaiBarang)) + " Rupiah"
+      : "",
+  );
 
   async function load() {
     try {
@@ -92,8 +109,11 @@
     try {
       const db = await getDB();
       const newId = crypto.randomUUID();
-      await db.execute("INSERT INTO sellers (id, name) VALUES ($1, $2)", [newId, cleanName]);
-      
+      await db.execute("INSERT INTO sellers (id, name) VALUES ($1, $2)", [
+        newId,
+        cleanName,
+      ]);
+
       await load(); // Reload data dari DB
       sellerId = newId;
       sellerNameInput = cleanName;
@@ -107,13 +127,17 @@
     const newName = prompt("Ubah nama penjual:", oldName);
     if (!newName || newName === oldName) return;
     const db = await getDB();
-    await db.execute("UPDATE sellers SET name = $1 WHERE id = $2", [newName, id]);
+    await db.execute("UPDATE sellers SET name = $1 WHERE id = $2", [
+      newName,
+      id,
+    ]);
     await load();
     await loadListBeli();
   }
 
   async function deleteSeller(id: string) {
-    if (!confirm("Hapus penjual ini beserta seluruh riwayat pembeliannya?")) return;
+    if (!confirm("Hapus penjual ini beserta seluruh riwayat pembeliannya?"))
+      return;
     const db = await getDB();
     await db.execute(`DELETE FROM purchases WHERE "sellerId" = $1`, [id]);
     await db.execute(`DELETE FROM debts WHERE "sellerId" = $1`, [id]);
@@ -124,16 +148,21 @@
   }
 
   async function handleAddItemUnit() {
-    if (!itemName || !unitName) return alert("Nama Barang dan Satuan wajib diisi!");
+    if (!itemName || !unitName)
+      return alert("Nama Barang dan Satuan wajib diisi!");
     const db = await getDB();
-    
-    if (!items.find((i) => i.name.toLowerCase() === itemName.trim().toLowerCase())) {
+
+    if (
+      !items.find((i) => i.name.toLowerCase() === itemName.trim().toLowerCase())
+    ) {
       await db.execute("INSERT INTO items (id, name) VALUES ($1, $2)", [
         crypto.randomUUID(),
         itemName.trim().toLowerCase(),
       ]);
     }
-    if (!units.find((u) => u.name.toLowerCase() === unitName.trim().toLowerCase())) {
+    if (
+      !units.find((u) => u.name.toLowerCase() === unitName.trim().toLowerCase())
+    ) {
       await db.execute("INSERT INTO units (id, name) VALUES ($1, $2)", [
         crypto.randomUUID(),
         unitName.trim().toLowerCase(),
@@ -171,13 +200,13 @@
 
   onMount(load);
 
-$effect(() => {
+  $effect(() => {
     if (itemName.trim() !== "") {
       // Cari apakah teks barang yang diketik sudah terdaftar di database master
       const matchItem = items.find(
-        (i) => i.name.toLowerCase() === itemName.trim().toLowerCase()
+        (i) => i.name.toLowerCase() === itemName.trim().toLowerCase(),
       );
-      
+
       // Jika ketemu dan barang tersebut punya pasangan nama satuan default, isi otomatis kolom satuannya
       if (matchItem && matchItem.defaultUnitName) {
         unitName = matchItem.defaultUnitName;
@@ -191,7 +220,10 @@ $effect(() => {
     <div class="modal-content" onclick={(e) => e.stopPropagation()}>
       <div class="modal-header">
         {#if step > 1}
-          <button class="btn-back" onclick={() => (step = step === 4 ? 1 : step - 1)}>
+          <button
+            class="btn-back"
+            onclick={() => (step = step === 4 ? 1 : step - 1)}
+          >
             <ArrowLeft size={20} />
           </button>
         {/if}
@@ -208,7 +240,9 @@ $effect(() => {
       {#if step === 1}
         <div class="field-header">
           <label for="seller-search">Nama Penjual</label>
-          <button class="text-btn" onclick={() => (step = 4)}>Edit Daftar</button>
+          <button class="text-btn" onclick={() => (step = 4)}
+            >Edit Daftar</button
+          >
         </div>
 
         <div class="search-wrapper">
@@ -223,8 +257,15 @@ $effect(() => {
 
         <div class="list-container">
           {#if sellerNameInput.trim() !== "" && !isExactSellerExist}
-            <button class="list-item add-auto" onclick={() => handleAutoCreateSeller(sellerNameInput)}>
-              <span class="create-text"><Plus size={14} /> Buat baru: "<strong>{sellerNameInput}</strong>"</span>
+            <button
+              class="list-item add-auto"
+              onclick={() => handleAutoCreateSeller(sellerNameInput)}
+            >
+              <span class="create-text"
+                ><Plus size={14} /> Buat baru: "<strong
+                  >{sellerNameInput}</strong
+                >"</span
+              >
               <ChevronRight size={16} />
             </button>
           {/if}
@@ -244,7 +285,9 @@ $effect(() => {
             </button>
           {:else}
             {#if sellerNameInput.trim() === ""}
-              <p class="empty-text">Silakan ketik nama petani/penjual di atas...</p>
+              <p class="empty-text">
+                Silakan ketik nama petani/penjual di atas...
+              </p>
             {/if}
           {/each}
         </div>
@@ -256,11 +299,17 @@ $effect(() => {
 
           <div class="input-wrapper">
             <label for="item-name">Nama Barang</label>
-            <input id="item-name" bind:value={itemName} placeholder="Kelapa subur, kelapa reject..." />
+            <input
+              id="item-name"
+              bind:value={itemName}
+              placeholder="Kelapa subur, kelapa reject..."
+            />
             {#if itemName && itemSuggestions.length > 0}
               <div class="suggestions">
                 {#each itemSuggestions as sugg}
-                  <button onclick={() => (itemName = sugg.name)}>{sugg.name}</button>
+                  <button onclick={() => (itemName = sugg.name)}
+                    >{sugg.name}</button
+                  >
                 {/each}
               </div>
             {/if}
@@ -268,11 +317,17 @@ $effect(() => {
 
           <div class="input-wrapper">
             <label for="unit-name">Satuan</label>
-            <input id="unit-name" bind:value={unitName} placeholder="subur, kg, butir..." />
+            <input
+              id="unit-name"
+              bind:value={unitName}
+              placeholder="subur, kg, butir..."
+            />
             {#if unitName && unitSuggestions.length > 0}
               <div class="suggestions">
                 {#each unitSuggestions as sugg}
-                  <button onclick={() => (unitName = sugg.name)}>{sugg.name}</button>
+                  <button onclick={() => (unitName = sugg.name)}
+                    >{sugg.name}</button
+                  >
                 {/each}
               </div>
             {/if}
@@ -292,21 +347,47 @@ $effect(() => {
           <div class="row">
             <div class="input-group">
               <label for="quantity-input">Jumlah {itemName}</label>
-              <input id="quantity-input" type="number" bind:value={jumlah} placeholder="0" />
+              <input
+                id="quantity-input"
+                type="number"
+                bind:value={jumlah}
+                placeholder="0"
+              />
               <span class="unit-label">/{unitName}</span>
             </div>
 
             <div class="input-group">
               <label for="price-input">Harga Per {unitName}</label>
-              <input id="price-input" type="number" bind:value={harga} placeholder="Rp 0" />
+              <input
+                id="price-input"
+                type="number"
+                bind:value={harga}
+                placeholder="Rp 0"
+              />
               <span class="unit-label">/{unitName}</span>
+
+              {#if terbilangHargaSatuan}
+                <p
+                  style="color: #64748b; font-size: 11.5px; font-weight: 600; margin-top: 4px; font-style: italic;"
+                >
+                  🗣️ {terbilangHargaSatuan} / {unitName}
+                </p>
+              {/if}
             </div>
           </div>
 
           <div class="total-box-simple">
             <span>Total Bayar Tunai:</span>
-            <strong>Rp {totalNilaiBarang.toLocaleString('id-ID')}</strong>
+            <strong>Rp {totalNilaiBarang.toLocaleString("id-ID")}</strong>
           </div>
+
+          {#if terbilangTotalBayar}
+            <p
+              style="color: #4f46e5; font-size: 12px; font-weight: 700; margin: -5px 0 15px 0; font-style: italic; background: #eef2ff; padding: 6px 10px; border-radius: 8px; border-left: 3px solid #4f46e5;"
+            >
+              🗣️ Terbilang: "{terbilangTotalBayar}"
+            </p>
+          {/if}
 
           <button class="save-cash" onclick={add}>
             Simpan Transaksi Tunai
@@ -329,8 +410,15 @@ $effect(() => {
             <div class="list-item manage">
               <span>{s.name}</span>
               <div class="item-actions">
-                <button onclick={() => editSeller(s.id, s.name)} aria-label="Edit Penjual"><Edit2 size={16} /></button>
-                <button class="del" onclick={() => deleteSeller(s.id)} aria-label="Hapus Penjual"><Trash2 size={16} /></button>
+                <button
+                  onclick={() => editSeller(s.id, s.name)}
+                  aria-label="Edit Penjual"><Edit2 size={16} /></button
+                >
+                <button
+                  class="del"
+                  onclick={() => deleteSeller(s.id)}
+                  aria-label="Hapus Penjual"><Trash2 size={16} /></button
+                >
               </div>
             </div>
           {/each}
@@ -365,7 +453,7 @@ $effect(() => {
     align-items: center;
     z-index: 1000;
   }
-  
+
   .modal-content {
     background: white;
     padding: 20px;
@@ -382,8 +470,9 @@ $effect(() => {
     justify-content: space-between;
     margin-bottom: 10px;
   }
-  
-  .btn-close, .btn-back {
+
+  .btn-close,
+  .btn-back {
     background: none;
     border: none;
     padding: 5px;
@@ -397,7 +486,7 @@ $effect(() => {
     align-items: center;
     margin-bottom: 8px;
   }
-  
+
   .text-btn {
     background: none;
     border: none;
@@ -417,7 +506,7 @@ $effect(() => {
     border-top: 1px solid #f0f0f0;
     padding-top: 10px;
   }
-  
+
   .list-item {
     padding: 14px;
     border: 1.5px solid #eee;
@@ -431,14 +520,14 @@ $effect(() => {
     cursor: pointer;
     color: #334155;
   }
-  
+
   .list-item.active {
     border-color: #27ae60;
     color: #27ae60;
     background: #f0fff4;
     font-weight: 600;
   }
-  
+
   .list-item.add-auto {
     border: 1.5px dashed #2563eb;
     background: #eff6ff;
@@ -461,7 +550,7 @@ $effect(() => {
     display: flex;
     gap: 10px;
   }
-  
+
   .item-actions button {
     background: white;
     border: 1px solid #ddd;
@@ -469,7 +558,7 @@ $effect(() => {
     border-radius: 6px;
     cursor: pointer;
   }
-  
+
   .item-actions button.del {
     color: #db3434;
   }
@@ -478,7 +567,7 @@ $effect(() => {
     position: relative;
     margin-bottom: 15px;
   }
-  
+
   .suggestions {
     background: white;
     border: 1px solid #ddd;
@@ -489,7 +578,7 @@ $effect(() => {
     gap: 5px;
     padding: 6px;
   }
-  
+
   .suggestions button {
     font-size: 11px;
     background: #f1f5f9;
@@ -505,11 +594,11 @@ $effect(() => {
     grid-template-columns: 1fr 1fr;
     gap: 12px;
   }
-  
+
   .input-group {
     position: relative;
   }
-  
+
   .unit-label {
     position: absolute;
     right: 12px;
@@ -518,7 +607,8 @@ $effect(() => {
     color: #94a3b8;
   }
 
-  .btn-next, .save-cash {
+  .btn-next,
+  .save-cash {
     width: 100%;
     padding: 14px;
     border-radius: 12px;
@@ -529,11 +619,11 @@ $effect(() => {
     margin-top: 15px;
     font-size: 15px;
   }
-  
+
   .btn-next {
     background: #334155;
   }
-  
+
   .save-cash {
     background: #27ae60;
     box-shadow: 0 4px 12px rgba(39, 174, 96, 0.2);
@@ -572,11 +662,11 @@ $effect(() => {
     color: #334155;
     margin-top: 4px;
   }
-  
+
   input:focus {
     border-color: #27ae60;
   }
-  
+
   label {
     font-size: 12px;
     font-weight: 600;
@@ -584,13 +674,13 @@ $effect(() => {
     color: #475569;
     text-transform: uppercase;
   }
-  
+
   hr {
     border: none;
     border-top: 1px solid #eee;
     margin-bottom: 12px;
   }
-  
+
   .label-transaksi-tunai {
     color: #27ae60;
     margin: 0;

@@ -69,3 +69,7 @@ Saya bisa bantu membuatkan rancangan database atau desain alur halaman (wirefram
 ------ end jawaban ------
 
 ============================ end google Ai ============================
+
+
+- urutkan log riwayat pada panjar sama seperti pada utang (yang paling baru paling atas)
+- tambahkan fitur hapus untuk panjar yang sudah lunas sama seperti pada utang

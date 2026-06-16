@@ -1,3 +1,4 @@
+<!-- Beli.svelte -->
 <script>
   import { onMount } from "svelte";
   import { showAddPurchases } from "$lib/stores";

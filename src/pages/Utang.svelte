@@ -3,6 +3,7 @@
   import { onMount } from "svelte";
   import { dbActions } from "$lib/api";
   import { fade, slide } from "svelte/transition";
+  import { angkaKeTerbilang } from "$lib/utils/terbilang";
   import {
     X,
     User,
@@ -30,6 +31,7 @@
 
   // Tab Filter Status Utang Kita
   let filterStatus = $state("hutang"); // "hutang", "lunas", "all"
+  let globalSearchText = $state(""); // <-- TAMBAHKAN STATE FILTER BARU INI
 
   // State untuk Modal Riwayat & Pelunasan
   let selectedDebt = $state(null);
@@ -117,9 +119,17 @@
         ),
   );
 
-  // Filter Baris Akun Utang berdasarkan Tab
+  // Filter Baris Akun Utang berdasarkan Tab dan Nama Petani
   let filteredDebts = $derived(
     debts.filter((d) => {
+      // Saring berdasarkan kecocokan nama (case-insensitive)
+      const matchesSearch = (d.sellerName || "")
+        .toLowerCase()
+        .includes(globalSearchText.toLowerCase().trim());
+
+      if (!matchesSearch) return false;
+
+      // Saring berdasarkan status tab filter aktif
       if (filterStatus === "hutang") return d.status === "hutang";
       if (filterStatus === "lunas") return d.status === "lunas";
       return true;
@@ -140,6 +150,24 @@
     selectedDebt
       ? Math.max(0, Number(selectedDebt.total) - (nominalBayarForm || 0))
       : 0,
+  );
+
+  // Tambahkan pelacak terbilang halaman utang
+  let terbilangUtangBaru = $derived(
+    newDebt.totalUtang
+      ? angkaKeTerbilang(Number(newDebt.totalUtang)) + " Rupiah"
+      : "",
+  );
+  let terbilangBayarCicilan = $derived(
+    nominalBayarForm
+      ? angkaKeTerbilang(Number(nominalBayarForm)) + " Rupiah"
+      : "",
+  );
+
+  let terbilangHargaSatuan = $derived(
+    newDebt.hargaSatuan
+      ? angkaKeTerbilang(Number(newDebt.hargaSatuan))
+      : "",
   );
 
   // --- Functions ---
@@ -413,6 +441,15 @@
     </div>
 
     <div class="list-section">
+      <div class="search-wrapper" style="margin-bottom: 14px;">
+        <input
+          type="text"
+          bind:value={globalSearchText}
+          placeholder="🔍 Cari nama petani di daftar bon utang..."
+          class="search-input"
+          style="width: 100%; padding: 10px 14px; border: 1px solid #cbd5e1; border-radius: 10px; font-size: 13.5px;"
+        />
+      </div>
       <div class="section-title">
         <h3>Daftar Tanggungan Kelompok Petani</h3>
         <span
@@ -642,6 +679,14 @@
               placeholder="0"
               bind:value={newDebt.hargaSatuan}
             />
+
+            {#if terbilangHargaSatuan}
+              <p
+                style="color: #059669; font-size: 12px; font-weight: 700; margin-top: 6px; font-style: italic; background: #ecfdf5; padding: 5px 10px; border-radius: 6px; border-left: 3px solid #10b981;"
+              >
+                🗣️ Terbilang: "{terbilangHargaSatuan} / {newDebt.unit}"
+              </p>
+            {/if}
           </div>
         </div>
 
@@ -658,6 +703,14 @@
               bind:value={newDebt.totalUtang}
             />
           </div>
+
+          {#if terbilangUtangBaru}
+            <p
+              style="color: #4f46e5; font-size: 12px; font-weight: 700; margin-top: 6px; font-style: italic; background: #eef2ff; padding: 5px 10px; border-radius: 6px; border-left: 3px solid #4f46e5;"
+            >
+              🗣️ Terbilang: "{terbilangUtangBaru}"
+            </p>
+          {/if}
           {#if newDebt.jumlah && newDebt.hargaSatuan}
             <small
               style="color: #b91c1c; font-size: 11px; margin-top: 4px; display: block; font-style: italic;"
@@ -901,6 +954,20 @@
                 bind:value={nominalBayarForm}
               />
             </div>
+            <small
+              style="color: #a16207; font-size: 11px; margin-top: 2px; display: block;"
+            >
+              * Ketik nominal lebih kecil dari total bon jika ingin **MENCICIL
+              SEBAGIAN**.
+            </small>
+
+            {#if terbilangBayarCicilan}
+              <p
+                style="color: #b45309; font-size: 12px; font-weight: 700; margin-top: 6px; font-style: italic; background: #fef3c7; padding: 5px 10px; border-radius: 6px; border-left: 3px solid #d97706;"
+              >
+                🗣️ Terbilang: "{terbilangBayarCicilan}"
+              </p>
+            {/if}
             <small
               style="color: #a16207; font-size: 11px; margin-top: 2px; display: block;"
             >
