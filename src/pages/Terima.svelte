@@ -1,3 +1,4 @@
+<!-- Terima.svelte -->
 <script lang="ts">
   import { dbActions } from "$lib/api";
   import { onMount } from "svelte";

@@ -1,3 +1,4 @@
+<!-- AddPurchaseModal.svelte -->
 <script lang="ts">
   import { dbActions, getDB, initDB } from "$lib/api";
   import { onMount } from "svelte";

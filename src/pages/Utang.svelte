@@ -16,6 +16,8 @@
     Scale,
     AlertCircle,
     ChevronRight,
+    History,
+    Trash2,
   } from "lucide-svelte";
 
   // --- States (Svelte 5 Runes) ---
@@ -26,10 +28,16 @@
   let loading = $state(true);
   let mode = $state("list"); // "list" atau "add"
 
-  // State untuk Modal Pelunasan
+  // Tab Filter Status Utang Kita
+  let filterStatus = $state("hutang"); // "hutang", "lunas", "all"
+
+  // State untuk Modal Riwayat & Pelunasan
   let selectedDebt = $state(null);
   let showPayModal = $state(false);
+  let debtHistory = $state([]); // Menyimpan data log transaksi
+  let nominalBayarForm = $state<number | undefined>();
   let catatanPelunasan = $state("");
+  let subModalView = $state("detail"); // "detail" untuk log riwayat, "bayar" untuk form input uang
 
   // States untuk Form Pendaftaran Utang Baru
   let newDebt = $state({
@@ -37,6 +45,7 @@
     item: "",
     unit: "",
     jumlah: undefined,
+    hargaSatuan: undefined,
     totalUtang: undefined,
     catatan: "",
   });
@@ -48,8 +57,33 @@
   let showItemHits = $state(false);
   let showUnitHits = $state(false);
 
+  // --- Efek Reaktif untuk Pengisian Satuan Otomatis ---
+  $effect(() => {
+    const cleanItemName = newDebt.item.trim().toLowerCase();
+    if (cleanItemName !== "") {
+      if (cleanItemName === "kelapa") {
+        newDebt.unit = "subur";
+        unitSearchText = "subur";
+      } else {
+        const matchItem = items.find(
+          (i) => i.name.toLowerCase() === cleanItemName,
+        );
+        if (matchItem && matchItem.defaultUnitName) {
+          newDebt.unit = matchItem.defaultUnitName;
+          unitSearchText = matchItem.defaultUnitName;
+        }
+      }
+    }
+  });
+
+  // --- Efek Kalkulasi Otomatis Nominal Utang Baru ---
+  $effect(() => {
+    if (newDebt.jumlah !== undefined && newDebt.hargaSatuan !== undefined) {
+      newDebt.totalUtang = Number(newDebt.jumlah) * Number(newDebt.hargaSatuan);
+    }
+  });
+
   // --- Derived States ---
-  // Menghilangkan duplikat nama barang untuk sugesti input
   let uniqueItems = $derived(
     items.reduce((acc, current) => {
       const x = acc.find(
@@ -83,9 +117,28 @@
         ),
   );
 
+  // Filter Baris Akun Utang berdasarkan Tab
+  let filteredDebts = $derived(
+    debts.filter((d) => {
+      if (filterStatus === "hutang") return d.status === "hutang";
+      if (filterStatus === "lunas") return d.status === "lunas";
+      return true;
+    }),
+  );
+
+  // Total hanya menjumlahkan nominal akun yang statusnya belum lunas
   const totalUtangKita = $derived(
     Array.isArray(debts)
-      ? debts.reduce((sum, d) => sum + (Number(d?.total) || 0), 0)
+      ? debts
+          .filter((d) => d.status === "hutang")
+          .reduce((sum, d) => sum + (Number(d?.total) || 0), 0)
+      : 0,
+  );
+
+  // Perhitungan sisa utang pasca bayar secara live
+  const sisaUtangPascaBayar = $derived(
+    selectedDebt
+      ? Math.max(0, Number(selectedDebt.total) - (nominalBayarForm || 0))
       : 0,
   );
 
@@ -93,11 +146,8 @@
   async function loadData() {
     loading = true;
     try {
-      // PERBAIKAN 2: Jalankan pemanggilan data secara terpisah (bukan Promise.all)
-      // agar jika salah satu master data kosong, list utang tidak ikut macet lock.
       const debtData = await dbActions.getOurDebts();
       debts = Array.isArray(debtData) ? debtData : [];
-
       sellers = (await dbActions.getSellers()) || [];
       items = (await dbActions.getItems()) || [];
       units = (await dbActions.getUnits()) || [];
@@ -108,8 +158,8 @@
       }
     } catch (e) {
       console.error("Gagal muat data di halaman utang:", e);
-    } finally {
-      // Diisolasi penuh agar pasti mengeksekusi pemberhentian loading text
+    }
+    file: {
       setTimeout(() => {
         loading = false;
       }, 50);
@@ -122,7 +172,7 @@
     }
 
     try {
-      loading = true; // Spinner mulai berputar
+      loading = true;
       const finalSellerId = await dbActions.getOrCreateSeller(
         newDebt.sellerName.trim(),
       );
@@ -132,6 +182,7 @@
         item: newDebt.item.trim().toLowerCase(),
         unit: newDebt.unit ? newDebt.unit.trim().toLowerCase() : "kg",
         jumlah: Number(newDebt.jumlah) || 0,
+        hargaSatuan: Number(newDebt.hargaSatuan) || 0,
         total: Number(newDebt.totalUtang),
         catatan: newDebt.catatan
           ? newDebt.catatan.trim()
@@ -141,35 +192,107 @@
       alert("Catatan utang ke petani berhasil disimpan!");
       resetForm();
       mode = "list";
-      await loadData(); // Mengambil data ulang setelah sukses input
+      await loadData();
     } catch (err) {
       console.error(err);
       alert("Gagal menyimpan utang.");
     } finally {
-      loading = false; // PERNYATAAN WAJIB: Spinner dipaksa mati baik sukses maupun gagal
+      loading = false;
     }
   }
 
   async function handleSettleDebt() {
+    if (!nominalBayarForm || nominalBayarForm <= 0) {
+      return alert("Masukkan nilai nominal pembayaran yang valid!");
+    }
+    if (nominalBayarForm > selectedDebt.total) {
+      return alert("Nominal pembayaran melebihi batas total utang petani!");
+    }
+
+    const pesanKonfirm =
+      nominalBayarForm === selectedDebt.total
+        ? `Tandai utang ke ${selectedDebt.sellerName} sebesar Rp ${rupiah(nominalBayarForm)} sebagai LUNAS TOTAL?`
+        : `Bayar cicilan ke ${selectedDebt.sellerName} sebesar Rp ${rupiah(nominalBayarForm)}? (Sisa utang: Rp ${rupiah(sisaUtangPascaBayar)})`;
+
+    if (!confirm(pesanKonfirm)) return;
+
+    try {
+      const teksKeterangan =
+        catatanPelunasan.trim() !== ""
+          ? catatanPelunasan.trim()
+          : `Dicairkan cash kasir pada tanggal ${new Date().toLocaleDateString("id-ID")}`;
+
+      await dbActions.payOurDebt(
+        selectedDebt.sellerId,
+        nominalBayarForm,
+        teksKeterangan,
+      );
+      alert("Pembayaran utang berhasil dibukukan!");
+      showPayModal = false;
+      await loadData();
+    } catch (e) {
+      alert("Gagal memperbarui status transaksi pelunasan.");
+    }
+  }
+
+  async function handleDeleteGroup() {
+    if (!selectedDebt) return;
+
+    const pesanKonfirm = `⚠️ PERINGATAN BERSALDO TOTAL!\n\nApakah Anda yakin ingin MENGHAPUS SEKALIGUS seluruh daftar utang & riwayat log milik "${selectedDebt.sellerName}"?\n\nTindakan ini akan menghapus semua nota berjalan dan tidak bisa dikembalikan.`;
+
+    if (!confirm(pesanKonfirm)) return;
+
+    try {
+      loading = true;
+      await dbActions.deleteOurDebtGroup(selectedDebt.sellerId);
+      alert(
+        `Seluruh berkas tanggungan utang ${selectedDebt.sellerName} berhasil dibersihkan!`,
+      );
+      showPayModal = false;
+      await loadData();
+    } catch (err) {
+      console.error(err);
+      alert("Gagal menghapus berkas utang dari database.");
+    } finally {
+      loading = false;
+    }
+  }
+
+  // Fungsi baru untuk menghapus satu nota transaksi lunas yang dipilih
+  async function handleDeleteSingleTransaction(transactionId) {
     if (
       !confirm(
-        `Tandai utang ke ${selectedDebt.sellerName} sebesar Rp ${rupiah(selectedDebt.total)} sebagai LUNAS?`,
+        "Apakah Anda yakin ingin menghapus arsip riwayat transaksi ini secara permanen?\n\nJika ini adalah riwayat cicilan, saldo sisa utang Anda akan otomatis bertambah kembali.",
       )
     )
       return;
 
     try {
-      const infoLunas =
-        catatanPelunasan.trim() !== ""
-          ? `LUNAS: ${catatanPelunasan.trim()}`
-          : `LUNAS dibayar tunai pada ${new Date().toLocaleDateString("id-ID")}`;
+      // 1. Kirim ID log transaksi ke backend perbaikan kita
+      await dbActions.deleteOurDebtTransaction(transactionId);
+      alert("Nota riwayat transaksi berhasil dibersihkan dari pembukuan.");
 
-      await dbActions.payOurDebt(selectedDebt.id, infoLunas);
-      alert("Utang berhasil dilunasi!");
-      showPayModal = false;
-      await loadData();
-    } catch (e) {
-      alert("Gagal memperbarui status pelunasan.");
+      // 2. Ambil ulang data manifes riwayat agar langsung hilang dari layar modal
+      if (selectedDebt) {
+        debtHistory = await dbActions.getOurDebtHistory(selectedDebt.sellerId);
+
+        // 3. Muat ulang daftar kelompok utama di background agar nominal luar ikut sinkron
+        const updatedDebts = await dbActions.getOurDebts();
+        debts = Array.isArray(updatedDebts) ? updatedDebts : [];
+
+        // 4. Cari ulang data grup saat ini untuk memperbarui sisa saldo berjalan di kepala modal
+        const currentGroup = debts.find(
+          (d) => d.sellerId === selectedDebt.sellerId,
+        );
+        if (currentGroup) {
+          selectedDebt = currentGroup;
+        } else {
+          showPayModal = false; // Tutup modal jika seluruh data riwayat petani ini habis total
+        }
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Gagal menghapus riwayat transaksi.");
     }
   }
 
@@ -179,6 +302,7 @@
       item: "",
       unit: units[0]?.name || "kg",
       jumlah: undefined,
+      hargaSatuan: undefined,
       totalUtang: undefined,
       catatan: "",
     };
@@ -187,25 +311,36 @@
     unitSearchText = units[0]?.name || "kg";
   }
 
-  function openPayModal(d) {
+  async function openPayModal(d) {
     selectedDebt = d;
+    nominalBayarForm = d.total > 0 ? d.total : undefined;
     catatanPelunasan = "";
+    subModalView = "detail";
     showPayModal = true;
+
+    debtHistory = await dbActions.getOurDebtHistory(d.sellerId);
   }
 
   function rupiah(n) {
     return new Intl.NumberFormat("id-ID").format(n || 0);
   }
+
   function formatTanggal(txtDate) {
     if (!txtDate) return "-";
     const d = new Date(txtDate);
-    return isNaN(d.getTime())
-      ? txtDate
-      : d.toLocaleDateString("id-ID", {
-          day: "2-digit",
-          month: "short",
-          year: "numeric",
-        });
+    if (isNaN(d.getTime())) return txtDate;
+
+    const tanggalBiasa = d.toLocaleDateString("id-ID", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+    const jamMenit = d.toLocaleTimeString("id-ID", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+    return `${tanggalBiasa} - Waktu: ${jamMenit}`;
   }
 
   onMount(loadData);
@@ -238,10 +373,54 @@
       </button>
     </div>
 
+    <div
+      class="status-filter-tabs"
+      style="display: grid; grid-template-columns: 1fr 1fr 1fr; background: #e2e8f0; padding: 4px; border-radius: 12px; margin-bottom: 18px;"
+    >
+      <button
+        class:active={filterStatus === "hutang"}
+        onclick={() => (filterStatus = "hutang")}
+        style="background: {filterStatus === 'hutang'
+          ? 'white'
+          : 'transparent'}; color: {filterStatus === 'hutang'
+          ? '#b91c1c'
+          : '#475569'}; border: none; padding: 10px 4px; font-size: 12.5px; font-weight: 700; border-radius: 8px; cursor: pointer;"
+      >
+        Belum Lunas
+      </button>
+      <button
+        class:active={filterStatus === "lunas"}
+        onclick={() => (filterStatus = "lunas")}
+        style="background: {filterStatus === 'lunas'
+          ? 'white'
+          : 'transparent'}; color: {filterStatus === 'lunas'
+          ? '#b91c1c'
+          : '#475569'}; border: none; padding: 10px 4px; font-size: 12.5px; font-weight: 700; border-radius: 8px; cursor: pointer;"
+      >
+        Lunas / Selesai
+      </button>
+      <button
+        class:active={filterStatus === "all"}
+        onclick={() => (filterStatus = "all")}
+        style="background: {filterStatus === 'all'
+          ? 'white'
+          : 'transparent'}; color: {filterStatus === 'all'
+          ? '#b91c1c'
+          : '#475569'}; border: none; padding: 10px 4px; font-size: 12.5px; font-weight: 700; border-radius: 8px; cursor: pointer;"
+      >
+        Semua ({debts.length})
+      </button>
+    </div>
+
     <div class="list-section">
       <div class="section-title">
-        <h3>Daftar Tanggungan Belum Dibayar</h3>
-        <span class="count-badge">{debts.length} Orang</span>
+        <h3>Daftar Tanggungan Kelompok Petani</h3>
+        <span
+          class="count-badge"
+          style="background: #fee2e2; color: #991b1b; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 600;"
+        >
+          {filteredDebts.length} Baris
+        </span>
       </div>
 
       {#if loading}
@@ -251,14 +430,17 @@
         </div>
       {:else}
         <div class="grid-list">
-          {#if debts.length > 0}
-            {#each debts as d (d.id)}
+          {#if filteredDebts.length > 0}
+            {#each filteredDebts as d (d.sellerId)}
               <div
-                class="item-card active-debt"
+                class="item-card"
                 onclick={() => openPayModal(d)}
-                style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;"
+                style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; border-left: 4px solid {d.status ===
+                'hutang'
+                  ? '#ef4444'
+                  : '#10b981'}; opacity: {d.status === 'lunas' ? 0.75 : 1};"
               >
-                <div class="item-info">
+                <div class="item-info" style="flex: 1; padding-right: 8px;">
                   <div
                     class="name-row"
                     style="display: flex; align-items: center; gap: 8px;"
@@ -269,50 +451,47 @@
                     >
                       {d.sellerName || "Anonim"}
                     </span>
-                    <span class="badge-warning">Belum Bayar</span>
+                    {#if d.status === "hutang"}
+                      <span class="badge-warning">Bon Aktif</span>
+                    {:else}
+                      <span
+                        class="badge-warning"
+                        style="background: #d1fae5; color: #065f46;"
+                        >Selesai</span
+                      >
+                    {/if}
                   </div>
 
                   <div
                     class="meta-row"
-                    style="display: flex; align-items: center; gap: 6px; margin-top: 3px; font-size: 11px; color: #64748b;"
+                    style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 4px; font-size: 11px; color: #64748b;"
                   >
-                    <span class="sub-time">⏰ {formatTanggal(d.tanggal)}</span>
-                    <span class="bullet">•</span>
-                    <span
-                      class="sub-item-spec"
-                      style="color: #b91c1c; font-weight: 500; text-transform: capitalize;"
+                    <span class="sub-time"
+                      >⏰ Aktivitas Akhir: {formatTanggal(d.tanggal)}</span
                     >
-                      📦 {d.item || "Barang"}
-                    </span>
                   </div>
 
-                  <div class="progress-container" style="margin-top: 5px;">
+                  <div class="progress-container" style="margin-top: 6px;">
                     <span
                       class="sub-progress"
-                      style="font-size: 11.5px; color: #475569; background: #f1f5f9; padding: 2px 8px; border-radius: 6px; display: inline-block;"
+                      style="font-size: 11.5px; color: #1e293b; background: #f1f5f9; padding: 4px 10px; border-radius: 8px; display: block; line-height: 1.4; border: 1px solid #e2e8f0; white-space: normal; word-break: break-word;"
                     >
-                      Volume Barang: <strong>{d.jumlah || 0}</strong>
-                      {d.unit || "kg"}
+                      Muatan Terikat: <strong style="color: #4f46e5;"
+                        >{d.unit}</strong
+                      >
                     </span>
                   </div>
-
-                  {#if d.catatan}
-                    <p
-                      class="note-text"
-                      style="margin: 6px 0 0 0; font-size: 11.5px; color: #475569; font-style: italic;"
-                    >
-                      📋 {d.catatan}
-                    </p>
-                  {/if}
                 </div>
 
                 <div
                   class="item-price-side"
-                  style="display: flex; align-items: center; gap: 6px;"
+                  style="display: flex; align-items: center; gap: 4px; flex-shrink: 0;"
                 >
                   <span
-                    class="price-val text-red"
-                    style="font-weight: 800; color: #dc2626; font-size: 14.5px;"
+                    class="price-val"
+                    style="font-weight: 800; color: {d.status === 'hutang'
+                      ? '#dc2626'
+                      : '#10b981'}; font-size: 15px;"
                   >
                     Rp {rupiah(d.total)}
                   </span>
@@ -327,7 +506,7 @@
           {:else}
             <div class="empty-card">
               <Coins size={36} />
-              <p>Hebat! Tidak ada tanggungan utang ke petani saat ini.</p>
+              <p>Tidak ada tanggungan utang pada kategori ini.</p>
             </div>
           {/if}
         </div>
@@ -388,7 +567,10 @@
               type="text"
               placeholder="Kelapa, kopra..."
               bind:value={itemSearchText}
-              oninput={(e) => (newDebt.item = e.target.value)}
+              oninput={(e) => {
+                newDebt.item = e.target.value;
+                itemSearchText = e.target.value;
+              }}
               onfocus={() => (showItemHits = true)}
               onblur={() => setTimeout(() => (showItemHits = false), 200)}
             />
@@ -415,7 +597,10 @@
               type="text"
               placeholder="kg, subur..."
               bind:value={unitSearchText}
-              oninput={(e) => (newDebt.unit = e.target.value)}
+              oninput={(e) => {
+                newDebt.unit = e.target.value;
+                unitSearchText = e.target.value;
+              }}
               onfocus={() => (showUnitHits = true)}
               onblur={() => setTimeout(() => (showUnitHits = false), 200)}
             />
@@ -436,15 +621,28 @@
           </div>
         </div>
 
-        <div class="input-group">
-          <label for="qty-input">Volume / Jumlah Barang yang Diterima</label>
-          <input
-            id="qty-input"
-            type="number"
-            step="any"
-            placeholder="0 (Boleh dikosongkan)"
-            bind:value={newDebt.jumlah}
-          />
+        <div class="grid-2">
+          <div class="input-group">
+            <label for="qty-input">Volume / Jumlah Barang *</label>
+            <input
+              id="qty-input"
+              type="number"
+              step="any"
+              placeholder="0"
+              bind:value={newDebt.jumlah}
+            />
+          </div>
+          <div class="input-group">
+            <label for="price-unit-input"
+              >Harga Per {newDebt.unit || "Satuan"} *</label
+            >
+            <input
+              id="price-unit-input"
+              type="number"
+              placeholder="0"
+              bind:value={newDebt.hargaSatuan}
+            />
+          </div>
         </div>
 
         <div class="input-group highlight-input-group">
@@ -460,6 +658,15 @@
               bind:value={newDebt.totalUtang}
             />
           </div>
+          {#if newDebt.jumlah && newDebt.hargaSatuan}
+            <small
+              style="color: #b91c1c; font-size: 11px; margin-top: 4px; display: block; font-style: italic;"
+            >
+              * Otomatis dihitung: {newDebt.jumlah} x Rp {rupiah(
+                newDebt.hargaSatuan,
+              )}
+            </small>
+          {/if}
         </div>
 
         <div class="input-group">
@@ -492,59 +699,254 @@
       onclick={(e) => e.stopPropagation()}
       in:slide={{ y: 100 }}
     >
-      <div class="modal-header">
-        <div>
-          <h4>Pelunasan Utang ke Petani</h4>
-          <p class="subtitle">
-            Catat pembayaran kas keluar untuk melunasi bon petani
-          </p>
-        </div>
-        <button class="btn-close" onclick={() => (showPayModal = false)}
-          ><X size={20} /></button
-        >
-      </div>
-
-      <div class="modal-body form-body">
-        <div class="brief-info-box">
-          <span class="info-lbl">Nama Petani</span>
-          <span class="info-val">{selectedDebt.sellerName}</span>
+      {#if subModalView === "detail"}
+        <div class="modal-header">
+          <div>
+            <h4>Kartu Kontrol Pembayaran ({selectedDebt.sellerName})</h4>
+            <p class="subtitle">
+              Riwayat penambahan nota utang & cicilan keluar berjalan
+            </p>
+          </div>
+          <button class="btn-close" onclick={() => (showPayModal = false)}
+            ><X size={20} /></button
+          >
         </div>
 
-        <div class="grid-2" style="gap: 10px;">
-          <div class="brief-info-box">
-            <span class="info-lbl">Komoditas</span><span
+        <div class="modal-body form-body">
+          <div
+            class="brief-info-box"
+            style="border-left: 4px solid {selectedDebt.total > 0
+              ? '#dc2626'
+              : '#10b981'}; background: {selectedDebt.total > 0
+              ? '#fff5f5'
+              : '#f0fdf4'};"
+          >
+            <span
+              class="info-lbl"
+              style="color: {selectedDebt.total > 0 ? '#991b1b' : '#065f46'};"
+              >Sisa Sisa Total Utang Kita Saat Ini</span
+            >
+            <span
               class="info-val"
-              style="text-transform: capitalize;">{selectedDebt.item}</span
+              style="font-size: 18px; color: {selectedDebt.total > 0
+                ? '#dc2626'
+                : '#10b981'}; font-weight: 800;"
             >
+              Rp {rupiah(selectedDebt.total)}
+            </span>
           </div>
-          <div class="brief-info-box alert-red">
-            <span class="info-lbl">Wajib Dibayar</span><span
-              class="info-val text-red"
-              style="font-size: 16px;">Rp {rupiah(selectedDebt.total)}</span
+
+          <div
+            class="history-log"
+            style="border: 1px solid #e2e8f0; border-radius: 14px; padding: 12px; max-height: 220px; overflow-y: auto; background: #f8fafc;"
+          >
+            <h5
+              style="margin: 0 0 10px 0; font-size: 11px; color: #475569; font-weight: 700; text-transform: uppercase; display: flex; align-items: center; gap: 4px;"
             >
+              <History size={13} /> Log Arus Pembukuan Utang
+            </h5>
+
+            <div class="log-scroll-area">
+              {#each debtHistory as log}
+                <div
+                  class="log-item"
+                  style="border-left: 4px solid {log.tipe === 'tambah'
+                    ? '#dc2626'
+                    : '#10b981'}; padding: 10px; margin-bottom: 10px; background: white; border-radius: 10px; border-top: 1px solid #f1f5f9; border-right: 1px solid #f1f5f9; border-bottom: 1px solid #f1f5f9; position: relative;"
+                >
+                  {#if log.tipe === "kurang" || selectedDebt.status === "lunas"}
+                    <button
+                      onclick={() => handleDeleteSingleTransaction(log.id)}
+                      style="position: absolute; right: 10px; bottom: 10px; background: #fee2e2; border: none; color: #ef4444; padding: 6px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center;"
+                      title="Hapus Nota Ini"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  {/if}
+
+                  <div
+                    style="display: flex; flex-direction: column; gap: 4px; width: 100%;"
+                  >
+                    <div
+                      style="display: flex; justify-content: space-between; align-items: flex-start; width: 100%; padding-right: 25px;"
+                    >
+                      <span
+                        class="log-date"
+                        style="font-size: 11px; font-weight: 600; color: #64748b; background: #f1f5f9; padding: 2px 8px; border-radius: 4px;"
+                      >
+                        📅 {formatTanggal(log.tanggal)}
+                      </span>
+                      <span
+                        style="font-weight: 800; font-size: 14px; color: {log.tipe ===
+                        'tambah'
+                          ? '#dc2626'
+                          : '#10b981'};"
+                      >
+                        {log.tipe === "tambah" ? "+(Utang)" : "-(Bayar)"} Rp {rupiah(
+                          log.nominal,
+                        )}
+                      </span>
+                    </div>
+
+                    <div style="margin-top: 4px;">
+                      <span
+                        class="log-item-name"
+                        style="font-weight: 800; font-size: 13.5px; color: #0f172a; text-transform: uppercase;"
+                      >
+                        {log.tipe === "tambah"
+                          ? "📦 PEMBUKAAN NOTA UTANG BARU"
+                          : "💸 TRANSAKSI KAS KELUAR (CICILAN)"}
+                      </span>
+                      <p
+                        style="color: #334155; font-size: 12px; margin: 4px 0 0 0; line-height: 1.5; font-style: italic; background: #fafafa; padding: 6px; border-radius: 6px; border: 1px dashed #e2e8f0; white-space: normal; word-break: break-word;"
+                      >
+                        📝 {log.catatan}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              {:else}
+                <p
+                  style="font-size: 12px; color: #94a3b8; font-style: italic; text-align: center; padding: 30px 0;"
+                >
+                  Belum ada jejak riwayat mutasi.
+                </p>
+              {/each}
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 10px; margin-top: 5px; width: 100%;">
+            <button
+              class="btn-save"
+              onclick={handleDeleteGroup}
+              style="background: #ef4444; color: white; flex: 1; padding: 12px; font-size: 13px;"
+            >
+              🗑️ Hapus Grup
+            </button>
+
+            {#if selectedDebt.status === "hutang"}
+              <button
+                class="btn-settle-confirm"
+                onclick={() => {
+                  subModalView = "bayar";
+                }}
+                style="background: #0f172a; color: white; flex: 2; padding: 12px; font-size: 13px;"
+              >
+                💸 Buka Form Bayar / Cicil
+              </button>
+            {:else}
+              <button
+                disabled
+                style="background: #cbd5e1; color: #94a3b8; flex: 2; padding: 12px; font-size: 13px; border: none; border-radius: 12px; font-weight: 700; cursor: not-allowed;"
+              >
+                ✅ Utang Sudah Lunas
+              </button>
+            {/if}
           </div>
         </div>
-
-        <div class="input-group">
-          <label for="pay-note">Catatan Pelunasan (Opsional)</label>
-          <input
-            id="pay-note"
-            type="text"
-            placeholder="Contoh: Diambil cash oleh istrinya / Transfer BRI"
-            bind:value={catatanPelunasan}
-          />
+      {:else if subModalView === "bayar"}
+        <div class="modal-header">
+          <div>
+            <h4>Input Pembayaran Kas Keluar</h4>
+            <p class="subtitle">
+              Kurangi saldo utang berjalan milik {selectedDebt.sellerName}
+            </p>
+          </div>
+          <button
+            class="btn-close"
+            onclick={() => {
+              subModalView = "detail";
+            }}><ArrowLeft size={16} /></button
+          >
         </div>
 
-        <button class="btn-settle-confirm" onclick={handleSettleDebt}>
-          <CheckCircle2 size={18} /> Tandai Sudah Lunas (Kas Keluar)
-        </button>
-      </div>
+        <div class="modal-body form-body">
+          <div
+            class="grid-2"
+            style="gap: 10px; grid-template-columns: 1fr 1fr;"
+          >
+            <div class="brief-info-box">
+              <span class="info-lbl">Total Sisa Bon</span>
+              <span class="info-val" style="font-size: 14px; color: #dc2626;"
+                >Rp {rupiah(selectedDebt.total)}</span
+              >
+            </div>
+            <div
+              class="brief-info-box"
+              style="background: #f0fdf4; border-color: #bbf7d0;"
+            >
+              <span class="info-lbl" style="color: #166534;"
+                >Sisa Pasca Bayar</span
+              >
+              <span class="info-val" style="font-size: 14px; color: #15803d;"
+                >Rp {rupiah(sisaUtangPascaBayar)}</span
+              >
+            </div>
+          </div>
+
+          <div
+            class="input-group highlight-input-group"
+            style="background: #fffbeb; border-color: #fef08a;"
+          >
+            <label for="pay-money-input" style="color: #854d0e;"
+              >Nominal Uang Tunai Keluar *</label
+            >
+            <div class="currency-input-wrapper">
+              <span class="currency-prefix" style="color: #a16207;">Rp</span>
+              <input
+                id="pay-money-input"
+                type="number"
+                placeholder="0"
+                style="border-color: #fef08a; color: #854d0e;"
+                bind:value={nominalBayarForm}
+              />
+            </div>
+            <small
+              style="color: #a16207; font-size: 11px; margin-top: 2px; display: block;"
+            >
+              * Ketik nominal lebih kecil dari total bon jika ingin **MENCICIL
+              SEBAGIAN**.
+            </small>
+          </div>
+
+          <div class="input-group">
+            <label for="pay-note">Catatan Alasan / Penyerahan Uang</label>
+            <input
+              id="pay-note"
+              type="text"
+              placeholder="Contoh: Cicilan nota kelapa 100 subur"
+              bind:value={catatanPelunasan}
+            />
+          </div>
+
+          <div
+            class="action-shortcut-row"
+            style="display: flex; gap: 8px; margin-top: 4px;"
+          >
+            <button
+              class="btn-save"
+              onclick={() => {
+                subModalView = "detail";
+              }}
+              style="background: #e2e8f0; color: #475569; flex: 1;"
+              >Kembali</button
+            >
+            <button
+              class="btn-settle-confirm"
+              onclick={handleSettleDebt}
+              style="background: #4f46e5; flex: 2; height: 100%; margin: 0;"
+            >
+              <CheckCircle2 size={16} /> Validasi & Potong Utang
+            </button>
+          </div>
+        </div>
+      {/if}
     </div>
   </div>
 {/if}
 
 <style>
-  /* --- STYLESHEET RESMI PREMIUM UTANG APP --- */
+  /* CSS bawaan Anda tetap utuh */
   .page-container {
     max-width: 480px;
     margin: 0 auto;
@@ -569,7 +971,6 @@
     font-size: 12px;
     color: #64748b;
   }
-
   .summary-card {
     background: linear-gradient(135deg, #7f1d1d 0%, #991b1b 100%);
     color: #ffffff;
@@ -594,7 +995,6 @@
     font-weight: 800;
     color: #fca5a5;
   }
-
   .btn-add-main {
     width: 100%;
     background: #ef4444;
@@ -611,10 +1011,6 @@
     font-size: 13.5px;
     box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2);
   }
-  .btn-add-main:active {
-    transform: scale(0.98);
-  }
-
   .section-title {
     display: flex;
     justify-content: space-between;
@@ -628,15 +1024,6 @@
     font-weight: 700;
     margin: 0;
   }
-  .count-badge {
-    font-size: 11px;
-    background: #fee2e2;
-    color: #991b1b;
-    padding: 2px 8px;
-    border-radius: 20px;
-    font-weight: 600;
-  }
-
   .grid-list {
     display: flex;
     flex-direction: column;
@@ -652,18 +1039,6 @@
     border: 1px solid #e2e8f0;
     cursor: pointer;
   }
-  .item-card.active-debt {
-    border-left: 4px solid #ef4444;
-  }
-  .item-card:active {
-    background-color: #f8fafc;
-  }
-
-  .name-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
   .item-info .name {
     font-weight: 700;
     color: #0f172a;
@@ -678,34 +1053,6 @@
     font-weight: 700;
     text-transform: uppercase;
   }
-
-  .meta-row {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin-top: 3px;
-  }
-  .sub-time,
-  .sub-item-spec {
-    font-size: 11px;
-    color: #64748b;
-    display: inline-flex;
-    align-items: center;
-    gap: 3px;
-  }
-  .sub-item-spec {
-    color: #b91c1c;
-    font-weight: 500;
-    text-transform: capitalize;
-  }
-  .bullet {
-    font-size: 10px;
-    color: #cbd5e1;
-  }
-
-  .progress-container {
-    margin-top: 5px;
-  }
   .sub-progress {
     font-size: 11.5px;
     color: #475569;
@@ -714,13 +1061,6 @@
     border-radius: 6px;
     display: inline-block;
   }
-  .note-text {
-    margin: 6px 0 0 0;
-    font-size: 11.5px;
-    color: #475569;
-    font-style: italic;
-  }
-
   .item-price-side {
     display: flex;
     align-items: center;
@@ -731,14 +1071,6 @@
     font-size: 14.5px;
     text-align: right;
   }
-  .text-red {
-    color: #dc2626 !important;
-  }
-  .arrow-icon {
-    color: #cbd5e1;
-  }
-
-  /* Form & Form Elements */
   .form-header {
     display: flex;
     align-items: center;
@@ -767,7 +1099,6 @@
     flex-direction: column;
     gap: 16px;
   }
-
   input {
     width: 100%;
     padding: 12px;
@@ -788,20 +1119,11 @@
     color: #475569;
     text-transform: uppercase;
   }
-  .grid-2 {
-    display: grid;
-    grid-template-columns: 2fr 1fr;
-    gap: 10px;
-  }
-
   .highlight-input-group {
     background: #fef2f2;
     padding: 12px;
     border-radius: 12px;
     border: 1px solid #fee2e2;
-  }
-  .highlight-input-group label {
-    color: #991b1b;
   }
   .currency-input-wrapper {
     display: flex;
@@ -820,10 +1142,6 @@
     font-weight: 700;
     color: #991b1b;
   }
-  .currency-input-wrapper input:focus {
-    border-color: #ef4444;
-  }
-
   .btn-save {
     width: 100%;
     background: #dc2626;
@@ -838,13 +1156,11 @@
     justify-content: center;
     gap: 8px;
     cursor: pointer;
-    box-shadow: 0 4px 12px rgba(220, 38, 38, 0.2);
   }
-
-  /* Modal Sheet Pelunasan */
   .modal-overlay {
     position: fixed;
     inset: 0;
+    margin-bottom: 38px;
     background: rgba(15, 23, 42, 0.6);
     display: flex;
     align-items: flex-end;
@@ -869,12 +1185,6 @@
     padding-bottom: 10px;
     margin-bottom: 14px;
   }
-  .modal-header h4 {
-    margin: 0;
-    font-size: 15px;
-    font-weight: 800;
-    color: #0f172a;
-  }
   .btn-close {
     background: #f1f5f9;
     border: none;
@@ -884,16 +1194,12 @@
     cursor: pointer;
     display: flex;
   }
-
   .brief-info-box {
     background: #f8fafc;
     padding: 12px;
     border-radius: 10px;
     border: 1px solid #e2e8f0;
-  }
-  .brief-info-box.alert-red {
-    background: #fff5f5;
-    border-color: #feb2b2;
+    width: 100%;
   }
   .info-lbl {
     font-size: 10px;
@@ -909,7 +1215,6 @@
     display: block;
     margin-top: 2px;
   }
-
   .btn-settle-confirm {
     width: 100%;
     background: #10b981;
@@ -924,10 +1229,7 @@
     align-items: center;
     gap: 6px;
     cursor: pointer;
-    box-shadow: 0 4px 14px rgba(16, 185, 129, 0.2);
   }
-
-  /* Autocomplete & Dropdowns */
   .search-container {
     position: relative;
   }
@@ -942,7 +1244,6 @@
     z-index: 50;
     max-height: 150px;
     overflow-y: auto;
-    box-shadow: 0 10px 15px rgba(0, 0, 0, 0.05);
   }
   .hit-item {
     display: flex;
@@ -964,9 +1265,6 @@
     border-radius: 4px;
     font-weight: 600;
   }
-  .search-results.mini {
-    max-height: 110px;
-  }
   .hit-item-mini {
     width: 100%;
     padding: 10px;
@@ -979,12 +1277,6 @@
     cursor: pointer;
     text-transform: capitalize;
   }
-  .hit-item-mini:hover,
-  .hit-item:hover {
-    background: #fef2f2;
-    color: #dc2626;
-  }
-
   .loading-state {
     text-align: center;
     padding: 40px;
@@ -1019,5 +1311,10 @@
     flex-direction: column;
     align-items: center;
     gap: 8px;
+  }
+  .log-scroll-area {
+    overflow-y: auto;
+    max-height: 214px;
+    padding-right: 2px;
   }
 </style>

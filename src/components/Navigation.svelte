@@ -15,7 +15,7 @@
     { name: "Home", path: "/", icon: House },
     // { name: 'Pemasok', path: '/sellers', icon: Truck},
     { name: "Beli", path: "/beli", icon: ShoppingCart },
-    { name: "Terima", path: "/terima", icon: BanknoteArrowDown },
+    // { name: "Terima", path: "/terima", icon: BanknoteArrowDown },
     { name: "DP/Panjar", path: "/panjar", icon: HandCoins },
     { name: "Utang", path: "/utang", icon: Banknote },
     // { name: "Items", path: "/item", icon: PackagePlus },

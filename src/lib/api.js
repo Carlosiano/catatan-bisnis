@@ -1,7 +1,6 @@
 // src/lib/api.js
 import Database from "@tauri-apps/plugin-sql";
 
-// Selalu gunakan SQLite di laptop maupun di Android
 const DB_NAME = "sqlite:catatan_bisnis.db";
 
 export async function getDB() {
@@ -11,25 +10,33 @@ export async function getDB() {
 export async function initDB() {
   const db = await getDB();
 
-  // 1. Skema tabel murni menggunakan standard data type SQLite
   const queries = [
     `CREATE TABLE IF NOT EXISTS sellers (id TEXT PRIMARY KEY, name TEXT NOT NULL, phone TEXT)`,
     `CREATE TABLE IF NOT EXISTS items (id TEXT PRIMARY KEY, name TEXT NOT NULL, price INTEGER DEFAULT 0, "defaultUnitId" TEXT)`,
     `CREATE TABLE IF NOT EXISTS units (id TEXT PRIMARY KEY, name TEXT NOT NULL)`,
     `CREATE TABLE IF NOT EXISTS purchases (id TEXT PRIMARY KEY, "sellerId" TEXT REFERENCES sellers(id), item TEXT, jumlah REAL, total INTEGER, tanggal DATETIME DEFAULT CURRENT_TIMESTAMP, catatan TEXT, status TEXT DEFAULT 'lunas', unit TEXT)`,
     `CREATE TABLE IF NOT EXISTS debts (id TEXT PRIMARY KEY, "sellerId" TEXT REFERENCES sellers(id), item TEXT, unit TEXT, harga INTEGER, "jumlahJanji" REAL, "jumlahSisa" REAL, "uangDibayar" INTEGER, "saldoDPSisa" INTEGER, tanggal DATETIME DEFAULT CURRENT_TIMESTAMP, status TEXT DEFAULT 'hutang')`,
-    `CREATE TABLE IF NOT EXISTS debt_transactions (id TEXT PRIMARY KEY, "debtId" TEXT REFERENCES debts(id) ON DELETE CASCADE, "jumlahAmbil" REAL, "hargaSaatIni" INTEGER, "totalPotong" INTEGER, tanggal DATETIME DEFAULT CURRENT_TIMESTAMP, itemName TEXT, transactionUnit TEXT)`
+    `CREATE TABLE IF NOT EXISTS debt_transactions (id TEXT PRIMARY KEY, "debtId" TEXT REFERENCES debts(id) ON DELETE CASCADE, "jumlahAmbil" REAL, "hargaSaatIni" INTEGER, "totalPotong" INTEGER, tanggal DATETIME DEFAULT CURRENT_TIMESTAMP, itemName TEXT, transactionUnit TEXT)`,
+    `CREATE TABLE IF NOT EXISTS our_debt_transactions (
+      id TEXT PRIMARY KEY, 
+      "sellerId" TEXT REFERENCES sellers(id), 
+      tipe TEXT, 
+      nominal INTEGER, 
+      tanggal DATETIME DEFAULT CURRENT_TIMESTAMP, 
+      catatan TEXT,
+      item TEXT,
+      jumlah REAL,
+      unit TEXT
+    )`
   ];
 
   for (const query of queries) {
     await db.execute(query);
   }
 
-  // 2. SEEDING OTOMATIS: Mengisi master barang & satuan bawaan jika database baru kosong
   try {
     const existingItems = await db.select("SELECT id FROM items LIMIT 1");
     if (existingItems.length === 0) {
-      // Data master yang ingin dimasukkan awal rilis
       const defaultData = [
         { item: "kelapa", unit: "subur" },
         { item: "kemiri", unit: "kg" },
@@ -44,7 +51,6 @@ export async function initDB() {
         const itemId = crypto.randomUUID();
         const unitId = crypto.randomUUID();
 
-        // Masukkan nama satuan ke tabel units jika belum terdaftar
         const checkUnit = await db.select("SELECT id FROM units WHERE name = $1 LIMIT 1", [data.unit]);
         let finalUnitId = checkUnit.length > 0 ? checkUnit[0].id : unitId;
 
@@ -52,7 +58,6 @@ export async function initDB() {
           await db.execute("INSERT INTO units (id, name) VALUES ($1, $2)", [finalUnitId, data.unit]);
         }
 
-        // Masukkan nama komoditas ke tabel items lengkap dengan relasi id satuannya
         await db.execute('INSERT INTO items (id, name, "defaultUnitId") VALUES ($1, $2, $3)', [
           itemId,
           data.item,
@@ -126,19 +131,14 @@ export const dbActions = {
     return await db.select("SELECT * FROM sellers ORDER BY name ASC");
   },
 
-  // src/lib/api.js
-
   async getDebtHistory(debtId) {
     const db = await initDB();
     try {
-      // 1. Ambil data sellerId terlebih dahulu untuk melacak seluruh transaksi milik petani ini
       const debtInfo = await db.select(`SELECT "sellerId" FROM debts WHERE id = $1 LIMIT 1`, [debtId]);
       if (debtInfo.length === 0) return [];
       const sellerId = debtInfo[0].sellerId;
 
-      // 2. Query UNION: Menggabungkan riwayat pendaftaran PANJAR BARU dan riwayat POTONG BARANG/RETUR
       return await db.select(`
-        -- JALUR A: Ambil riwayat setiap kali kasir MENAMBAH/MENCAIRKAN uang panjar baru ke petani
         SELECT 
           id,
           0 as "jumlahAmbil",
@@ -153,7 +153,6 @@ export const dbActions = {
         
         UNION ALL
         
-        -- JALUR B: Ambil riwayat setiap kali petani POTONG UTANG (terima barang atau retur uang tunai)
         SELECT 
           id,
           "jumlahAmbil",
@@ -177,7 +176,6 @@ export const dbActions = {
   async getOnlyDebts() {
     const db = await initDB();
     try {
-      // PERBAIKAN UTAMA: Menggabungkan (Group By) panjar berdasarkan sellerId
       return await db.select(`
         SELECT 
           d.id, 
@@ -198,7 +196,6 @@ export const dbActions = {
         
         UNION ALL
         
-        -- Tetap tampilkan yang lunas secara individual di tab riwayat lunas
         SELECT 
           d.id, d."sellerId", d.item, d.unit, d."jumlahJanji", d."jumlahSisa", 
           d."uangDibayar", d."saldoDPSisa", d.tanggal, d.status, s.name as "sellerName"
@@ -213,7 +210,6 @@ export const dbActions = {
     }
   },
 
-  // BARU: Fungsi untuk mengedit data induk panjar
   async updateDebt(id, item, unit, jumlahJanji, jumlahSisa) {
     const db = await getDB();
     return await db.execute(
@@ -226,12 +222,11 @@ export const dbActions = {
       [item, unit, Number(jumlahJanji) || 0, Number(jumlahSisa) || 0, id]
     );
   },
-  // BARU: Fungsi untuk mencatat pengembalian uang tunai sebagian atau seluruhnya
+
   async partialReturnDebt(debt, nominalKembali, isLunasSemua) {
     const db = await getDB();
     const formatUang = (nominal) => new Intl.NumberFormat('id-ID').format(nominal);
 
-    // 1. Catat uang masuk ke log purchases sebagai arus kas masuk kembalian
     await db.execute(
       `INSERT INTO purchases (id, "sellerId", item, jumlah, total, tanggal, status, catatan, unit) 
        VALUES ($1, $2, $3, 0, 0, CURRENT_TIMESTAMP, 'lunas', $4, '-')`,
@@ -243,19 +238,12 @@ export const dbActions = {
       ]
     );
 
-    // 2. Catat ke debt_transactions agar muncul di riwayat modal berjalan
     await db.execute(
       `INSERT INTO debt_transactions (id, "debtId", "jumlahAmbil", "hargaSaatIni", "totalPotong", tanggal, itemName, transactionUnit)
        VALUES ($1, $2, 0, 0, $3, CURRENT_TIMESTAMP, $4, '-')`,
       [crypto.randomUUID(), debt.id, nominalKembali, "Pengembalian Tunai"]
     );
 
-    // 3. Update saldo di tabel debts
-    const saldoBaru = Math.max(0, debt.saldoDPSisa - nominalKembali);
-    const statusBaru = isLunasSemua || saldoBaru <= 0 ? 'returned' : 'hutang';
-    const sisaBarangBaru = isLunasSemua || saldoBaru <= 0 ? 0 : debt.jumlahSisa;
-
-    // Jika di-grup, kita update seluruh baris hutang milik petani ini agar adil memotong saldo
     await db.execute(
       `UPDATE debts SET 
         "saldoDPSisa" = "saldoDPSisa" - $1,
@@ -282,35 +270,35 @@ export const dbActions = {
     return await db.execute(`DELETE FROM ${table} WHERE id = $1`, [id]);
   },
 
-
-
   async settleDebt(debt, jumlahMasuk, hargaSaatIni, nominalPotongManual) {
     const db = await getDB();
 
     const totalNilaiBarang = jumlahMasuk * hargaSaatIni;
     const sellerIdFix = debt.sellerId || null;
 
-    // PERBAIKAN 1: Bersihkan teks dan paksa huruf kecil murni (Lower Case) untuk standarisasi data
+    // Ambil ID debts asli jika data yang dilempar berupa objek grup seller
+    let targetDebtId = debt.id;
+    if (!debt.status) {
+      const activeDebts = await db.select(`SELECT id, "saldoDPSisa" FROM debts WHERE "sellerId" = $1 AND status = 'hutang' ORDER BY tanggal ASC LIMIT 1`, [sellerIdFix]);
+      if (activeDebts.length === 0) throw new Error("Tidak ada nota panjar aktif untuk petani ini.");
+      targetDebtId = activeDebts[0].id;
+      debt.saldoDPSisa = activeDebts[0].saldoDPSisa;
+    }
+
     const namaBarangClean = debt.item ? debt.item.trim().toLowerCase() : "";
     const namaSatuanClean = debt.unit ? debt.unit.trim().toLowerCase() : "";
 
     if (namaBarangClean !== "") {
       const existingItem = await db.select("SELECT id FROM items WHERE name = $1 LIMIT 1", [namaBarangClean]);
       if (existingItem.length === 0) {
-        await db.execute("INSERT INTO items (id, name) VALUES ($1, $2)", [
-          crypto.randomUUID(),
-          namaBarangClean
-        ]);
+        await db.execute("INSERT INTO items (id, name) VALUES ($1, $2)", [crypto.randomUUID(), namaBarangClean]);
       }
     }
 
     if (namaSatuanClean !== "") {
       const existingUnit = await db.select("SELECT id FROM units WHERE name = $1 LIMIT 1", [namaSatuanClean]);
       if (existingUnit.length === 0) {
-        await db.execute("INSERT INTO units (id, name) VALUES ($1, $2)", [
-          crypto.randomUUID(),
-          namaSatuanClean
-        ]);
+        await db.execute("INSERT INTO units (id, name) VALUES ($1, $2)", [crypto.randomUUID(), namaSatuanClean]);
       }
     }
 
@@ -319,52 +307,32 @@ export const dbActions = {
       : Math.min(Number(debt.saldoDPSisa), totalNilaiBarang);
 
     let uangTambahanBayar = Math.max(0, totalNilaiBarang - porsiPotongDP);
-
     let teksCatatan = `Potong dari Panjar: Rp ${porsiPotongDP.toLocaleString('id-ID')}`;
     if (uangTambahanBayar > 0) {
       teksCatatan += ` | Bayar Tunai ke Petani: Rp ${uangTambahanBayar.toLocaleString('id-ID')}`;
     }
 
-    // PERBAIKAN 2: Gunakan namaBarangClean & namaSatuanClean agar data purchases seragam menggunakan huruf kecil murni
     await db.execute(`
       INSERT INTO purchases (id, "sellerId", item, jumlah, total, tanggal, unit, catatan, status)
-      VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, $6, $7, $8)
-    `, [
-      crypto.randomUUID(),
-      sellerIdFix,
-      namaBarangClean, // <-- Menggunakan hasil standarisasi huruf kecil murni
-      jumlahMasuk,
-      totalNilaiBarang,
-      namaSatuanClean, // <-- Menggunakan hasil standarisasi huruf kecil murni
-      teksCatatan,
-      'lunas'
-    ]);
+      VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, $6, $7, 'lunas')
+    `, [crypto.randomUUID(), sellerIdFix, namaBarangClean, jumlahMasuk, totalNilaiBarang, namaSatuanClean, teksCatatan]);
 
     await db.execute(
       `INSERT INTO debt_transactions (id, "debtId", "jumlahAmbil", "hargaSaatIni", "totalPotong", tanggal, itemName, transactionUnit)
        VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, $6, $7)`,
-      [
-        crypto.randomUUID(),
-        debt.id,
-        jumlahMasuk,
-        hargaSaatIni,
-        porsiPotongDP,
-        namaBarangClean, // <-- Gunakan nama yang sudah bersih
-        namaSatuanClean  // <-- Gunakan satuan yang sudah bersih
-      ]
+      [crypto.randomUUID(), targetDebtId, jumlahMasuk, hargaSaatIni, porsiPotongDP, namaBarangClean, namaSatuanClean]
     );
 
     const sisaUangDPBaru = Math.max(0, debt.saldoDPSisa - porsiPotongDP);
-    const sisaBarangBaru = debt.jumlahJanji > 0 ? Math.max(0, debt.jumlahSisa - jumlahMasuk) : 0;
     const statusBaru = sisaUangDPBaru <= 0 ? 'lunas-dp' : 'hutang';
 
     await db.execute(
       `UPDATE debts SET 
-        "jumlahSisa" = $1, 
+        "jumlahSisa" = CASE WHEN "jumlahJanji" > 0 THEN MAX(0, "jumlahSisa" - $1) ELSE 0 END, 
         "saldoDPSisa" = $2, 
         status = $3 
        WHERE id = $4`,
-      [sisaBarangBaru, sisaUangDPBaru, statusBaru, debt.id]
+      [jumlahMasuk, sisaUangDPBaru, statusBaru, targetDebtId]
     );
   },
 
@@ -387,7 +355,6 @@ export const dbActions = {
   async getItems() {
     const db = await initDB();
     try {
-      // Tarik nama barang sekaligus nama satuan bawaannya dari tabel units
       return await db.select(`
         SELECT i.id, i.name, u.name as defaultUnitName 
         FROM items i
@@ -422,53 +389,268 @@ export const dbActions = {
   },
 
   async addOurDebt(data) {
-    // PERBAIKAN: Ubah getDB() menjadi initDB() agar database dijamin siap sebelum INSERT
     const db = await initDB();
-
     const itemFix = data.item ? data.item.trim().toLowerCase() : "";
     const unitFix = data.unit ? data.unit.trim().toLowerCase() : "kg";
+    const newId = crypto.randomUUID();
+    const jamLokal = new Date().toISOString();
+    const formatRupiah = (angka) => new Intl.NumberFormat('id-ID').format(angka);
 
-    // Kita gunakan tabel purchases dengan status 'hutang-kita'
-    return await db.execute(
-      `INSERT INTO purchases (id, "sellerId", item, jumlah, total, catatan, status, unit) 
-       VALUES ($1, $2, $3, $4, $5, $6, 'hutang-kita', $7)`,
-      [crypto.randomUUID(), data.sellerId, itemFix, data.jumlah, data.total, data.catatan, unitFix]
+    const hargaSatuanFix = Number(data.hargaSatuan) || 0;
+    const jumlahFix = Number(data.jumlah) || 0;
+
+    const detilCatatanStatus = `Nota baru: ${jumlahFix} ${unitFix} ${itemFix} @Rp ${formatRupiah(hargaSatuanFix)} (Keterangan: ${data.catatan ? data.catatan.trim() : 'Utang nota beli barang'})`;
+
+    await db.execute(
+      `INSERT INTO purchases (id, "sellerId", item, jumlah, total, catatan, status, unit, tanggal) 
+       VALUES ($1, $2, $3, $4, $5, $6, 'hutang-kita', $7, $8)`,
+      [newId, data.sellerId, itemFix, jumlahFix, data.total, detilCatatanStatus, unitFix, jamLokal]
+    );
+
+    await db.execute(
+      `INSERT INTO our_debt_transactions (id, "sellerId", tipe, nominal, catatan, item, jumlah, unit, tanggal)
+       VALUES ($1, $2, 'tambah', $3, $4, $5, $6, $7, $8)`,
+      [crypto.randomUUID(), data.sellerId, data.total, detilCatatanStatus, itemFix, jumlahFix, unitFix, jamLokal]
     );
   },
 
   async getOurDebts() {
     try {
       const db = await initDB();
-      const result = await db.select(`
+
+      // Membaca dokumen utang aktif maupun yang sudah berstatus lunas-cicil
+      const saldoSellers = await db.select(`
         SELECT 
-          p.id, 
-          p.item, 
-          p.jumlah, 
-          p.total, 
-          p.tanggal, 
-          p."sellerId", 
-          p.unit, 
-          p.catatan, 
-          p.status, 
-          s.name as "sellerName"
+          p."sellerId",
+          s.name as "sellerName",
+          SUM(p.total) as total,
+          COUNT(CASE WHEN p.status = 'hutang-kita' THEN 1 END) as jumlahUtangAktif
         FROM purchases p
         LEFT JOIN sellers s ON p."sellerId" = s.id
-        WHERE p.status = 'hutang-kita'
-        ORDER BY p.tanggal DESC
+        WHERE p.status IN ('hutang-kita', 'hutang-kita-lunas')
+        GROUP BY p."sellerId"
       `);
-      return result || [];
+
+      const finalResult = [];
+      for (const seller of saldoSellers) {
+        const lastLog = await db.select(`
+          SELECT tanggal, item, unit, catatan 
+          FROM our_debt_transactions 
+          WHERE "sellerId" = $1 
+          ORDER BY tanggal DESC LIMIT 1
+        `, [seller.sellerId]);
+
+        const detailMuatan = await db.select(`
+          SELECT item, unit, SUM(jumlah) as total_qty 
+          FROM purchases 
+          WHERE "sellerId" = $1 AND status IN ('hutang-kita', 'hutang-kita-lunas') AND jumlah > 0
+          GROUP BY item, unit
+        `, [seller.sellerId]);
+
+        const stringMuatan = detailMuatan.length > 0
+          ? detailMuatan.map(m => `${m.total_qty} ${m.unit} ${m.item}`).join(", ")
+          : "-";
+
+        // Menentukan tanda status ringkasan kelompok petani
+        const statusGrup = seller.jumlahUtangAktif > 0 ? 'hutang' : 'lunas';
+
+        finalResult.push({
+          sellerId: seller.sellerId,
+          sellerName: seller.sellerName,
+          total: seller.total,
+          status: statusGrup, // Digunakan untuk filter tab di UI
+          tanggal: lastLog.length > 0 ? lastLog[0].tanggal : new Date().toISOString(),
+          item: lastLog.length > 0 && lastLog[0].item !== '-' ? lastLog[0].item : "Mutasi Pembayaran",
+          unit: stringMuatan
+        });
+      }
+
+      return finalResult.sort((a, b) => new Date(b.tanggal).getTime() - new Date(a.tanggal).getTime());
     } catch (err) {
       console.error("Gagal total query getOurDebts:", err);
-      return []; // Mengembalikan array kosong agar Svelte .reduce() tidak crash
+      return [];
     }
   },
 
-  async payOurDebt(id, catatanBaru) {
+  async payOurDebt(sellerId, nominalBayar, catatanBaru) {
     const db = await getDB();
-    // Ubah status menjadi 'lunas' setelah Anda membayar utang tersebut ke petani
-    return await db.execute(
-      `UPDATE purchases SET status = 'lunas', catatan = $1 WHERE id = $2`,
-      [catatanBaru, id]
+    const jamLokal = new Date().toISOString();
+    const formatRupiah = (angka) => new Intl.NumberFormat('id-ID').format(angka);
+
+    // Ambil nota utang kita yang masih aktif berjalan
+    const activeDebts = await db.select(
+      `SELECT id, total, catatan, item, unit, jumlah FROM purchases WHERE "sellerId" = $1 AND status = 'hutang-kita' ORDER BY tanggal ASC`,
+      [sellerId]
     );
+
+    const detilCicilanCatatan = `Bayar cicilan keluar: Rp ${formatRupiah(nominalBayar)} (${catatanBaru})`;
+
+    // Catat mutasi pembayarannya
+    await db.execute(
+      `INSERT INTO our_debt_transactions (id, "sellerId", tipe, nominal, catatan, item, jumlah, unit, tanggal)
+       VALUES ($1, $2, 'kurang', $3, $4, '-', 0, '-', $5)`,
+      [crypto.randomUUID(), sellerId, Number(nominalBayar), detilCicilanCatatan, jamLokal]
+    );
+
+    let sisaUangBayar = Number(nominalBayar);
+
+    for (const debt of activeDebts) {
+      if (sisaUangBayar <= 0) break;
+
+      if (sisaUangBayar >= debt.total) {
+        sisaUangBayar -= debt.total;
+        // PERUBAHAN: Ubah status menjadi 'hutang-kita-lunas' agar dokumen tidak hilang/terhapus
+        await db.execute(
+          `UPDATE purchases SET total = 0, status = 'hutang-kita-lunas', catatan = $1, tanggal = $2 WHERE id = $3`,
+          [`${debt.catatan} | LUNAS DICICIL`, jamLokal, debt.id]
+        );
+      } else {
+        const sisaNominalUtang = debt.total - sisaUangBayar;
+        await db.execute(
+          `UPDATE purchases SET total = $1, catatan = $2, tanggal = $3 WHERE id = $4`,
+          [sisaNominalUtang, `${debt.catatan} | Dipotong Sebagian`, jamLokal, debt.id]
+        );
+        sisaUangBayar = 0;
+      }
+    }
+    return true;
+  },
+
+  async getOurDebtHistory(sellerId) {
+    const db = await initDB();
+    try {
+      return await db.select(
+        `SELECT * FROM our_debt_transactions WHERE "sellerId" = $1 ORDER BY tanggal DESC`,
+        [sellerId]
+      );
+    } catch (err) {
+      console.error("Gagal memuat log riwayat utang kita:", err);
+      return [];
+    }
+  },
+async deleteOurDebtGroup(sellerId) {
+    const db = await initDB();
+    try {
+      // 1. Hapus semua log mutasi transaksi utang/cicilan (tambah & kurang) milik petani ini
+      await db.execute(`DELETE FROM our_debt_transactions WHERE "sellerId" = $1`, [sellerId]);
+
+      // 2. PERBAIKAN: Hapus seluruh nota pembelian berkode utang kita, 
+      // baik yang masih aktif ('hutang-kita') maupun yang sudah diselesaikan ('hutang-kita-lunas')
+      await db.execute(
+        `DELETE FROM purchases WHERE "sellerId" = $1 AND status IN ('hutang-kita', 'hutang-kita-lunas')`, 
+        [sellerId]
+      );
+
+      return true;
+    } catch (err) {
+      console.error("Gagal menghapus total data utang kelompok petani:", err);
+      throw err;
+    }
+  },
+  async deletePanjarGroup(sellerId) {
+    const db = await initDB();
+    try {
+      // 1. Ambil semua id panjar (debts) milik petani ini yang berstatus aktif ('hutang')
+      const activeDebts = await db.select(`SELECT id FROM debts WHERE "sellerId" = $1 AND status = 'hutang'`, [sellerId]);
+
+      if (activeDebts.length > 0) {
+        const debtIds = activeDebts.map(d => `'${d.id}'`).join(",");
+        // 2. Hapus log transaksi potongan timbangan komoditas yang mengikat id panjar tersebut
+        await db.execute(`DELETE FROM debt_transactions WHERE "debtId" IN (${debtIds})`);
+      }
+
+      // 3. Hapus seluruh dokumen kontrak panjar aktif ('hutang') milik kelompok petani ini
+      await db.execute(`DELETE FROM debts WHERE "sellerId" = $1 AND status = 'hutang'`, [sellerId]);
+
+      return true;
+    } catch (err) {
+      console.error("Gagal membersihkan total berkas panjar lapangan:", err);
+      throw err;
+    }
+  },
+async deleteOurDebtTransaction(transactionId) {
+    const db = await initDB();
+    try {
+      // 1. Ambil info log mutasi sebelum dihapus
+      const logInfo = await db.select(
+        `SELECT nominal, "sellerId", tipe FROM our_debt_transactions WHERE id = $1 LIMIT 1`,
+        [transactionId]
+      );
+
+      if (logInfo.length > 0) {
+        const { sellerId, nominal, tipe } = logInfo[0];
+
+        // 2. Hapus dari tabel log transaksi utama
+        await db.execute(`DELETE FROM our_debt_transactions WHERE id = $1`, [transactionId]);
+
+        // 3. JIKA YANG DIHAPUS ADALAH LOG CICILAN (tipe: 'kurang')
+        if (tipe === 'kurang') {
+          let sisaUangRestore = Number(nominal); // Contoh: 4.000.000
+
+          // Ambil semua nota purchases terkait (baik yang lunas dicicil maupun yang masih sisa utang)
+          // Diurutkan dari yang paling baru diubah agar sinkronisasi pembalikan datanya rapi
+          const relatedPurchases = await db.select(
+            `SELECT id, total, catatan, status 
+             FROM purchases 
+             WHERE "sellerId" = $1 AND status IN ('hutang-kita', 'hutang-kita-lunas') 
+             ORDER BY tanggal DESC`,
+            [sellerId]
+          );
+
+          // Cari tahu struktur awal sebelum dicicil (menggunakan trik membaca catatan asli jika ada pembatasan harga)
+          for (const debt of relatedPurchases) {
+            if (sisaUangRestore <= 0) break;
+
+            // Kita perlu menebak atau mengembalikan nominal asli nota ini.
+            // Sebagai pengaman pembukuan, kita kembalikan saldo ke nota yang statusnya 'hutang-kita-lunas' terlebih dahulu
+            if (debt.status === 'hutang-kita-lunas') {
+              // Ambil kembali nominal dari teks catatan asli jika memungkinkan, atau langsung inject sisa uang restore
+              // Di sini kita langsung pulihkan statusnya menjadi 'hutang-kita' (belum lunas)
+              const cleanCatatan = debt.catatan
+                .replace(" | LUNAS DICICIL", "")
+                .replace(" | Dipotong Sebagian", "");
+
+              // Karena di fungsi payOurDebt() nota lunas di-set total = 0, 
+              // Maka kita perlu mengembalikan isi nominal utang aslinya dari database.
+              // Kita bisa melihat teks log 'Nota baru: ... @Rp ...' atau jika di log transaksi 'tambah' ada nilainya.
+              // Untuk cara instan & aman: kembalikan nominal cicilan ini ke total nota tersebut.
+              await db.execute(
+                `UPDATE purchases 
+                 SET total = total + $1, status = 'hutang-kita', catatan = $2 
+                 WHERE id = $3`,
+                [sisaUangRestore, cleanCatatan, debt.id]
+              );
+              
+              sisaUangRestore = 0; // Uang 4 juta sudah berhasil dikembalikan ke pangkuan nota utang berjalan
+            } 
+            else if (debt.status === 'hutang-kita') {
+              // Jika nota tersebut kemarin hanya dipotong sebagian (belum sampai lunas),
+              // kembalikan sisa potongan cicilannya ke total utang nota ini.
+              const cleanCatatan = debt.catatan.replace(" | Dipotong Sebagian", "");
+              
+              await db.execute(
+                `UPDATE purchases 
+                 SET total = total + $1, catatan = $2 
+                 WHERE id = $3`,
+                [sisaUangRestore, cleanCatatan, debt.id]
+              );
+              
+              sisaUangRestore = 0;
+            }
+          }
+        } 
+        // 4. JIKA YANG DIHAPUS ADALAH PEMBUKAAN UTANG BARU (tipe: 'tambah')
+        else if (tipe === 'tambah') {
+          await db.execute(
+            `DELETE FROM purchases WHERE "sellerId" = $1 AND total = $2 AND status = 'hutang-kita' LIMIT 1`,
+            [sellerId, nominal]
+          );
+        }
+      }
+      return true;
+    } catch (err) {
+      console.error("Gagal menghapus riwayat transaksi utang:", err);
+      throw err;
+    }
   }
 };
