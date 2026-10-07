@@ -7,6 +7,13 @@ fn greet(name: &str) -> String {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_deep_link::init())
+        .setup(|app| {
+            // Ini untuk memastikan deep link aktif di platform desktop
+            #[cfg(desktop)]
+            let _ = app.handle().plugin(tauri_plugin_deep_link::init());
+            Ok(())
+        })
         .plugin(tauri_plugin_sql::Builder::new().build())
         // Tambahkan plugin di sini
         .plugin(tauri_plugin_fs::init())

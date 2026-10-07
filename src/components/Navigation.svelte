@@ -9,6 +9,7 @@
     PackagePlus,
     ShoppingCart,
     Truck,
+    TestTube
   } from "lucide-svelte";
 
   const menus = [
@@ -19,6 +20,7 @@
     { name: "DP/Panjar", path: "/panjar", icon: HandCoins },
     { name: "Utang", path: "/utang", icon: Banknote },
     // { name: "Items", path: "/item", icon: PackagePlus },
+    {name: "Testing", path: "/pengaturan", icon: TestTube},
   ];
 
   // Fungsi helper untuk cek apakah link sedang aktif

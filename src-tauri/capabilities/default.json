@@ -5,9 +5,13 @@
   "windows": ["main"],
   "permissions": [
     "core:default",
+    "fs:default",
     "opener:default",
+    "opener:allow-default-urls",
+    "opener:allow-open-url",
     "sql:default",
     "sql:allow-execute",
-    "sql:allow-select"
+    "sql:allow-select",
+    "deep-link:default"
   ]
 }
